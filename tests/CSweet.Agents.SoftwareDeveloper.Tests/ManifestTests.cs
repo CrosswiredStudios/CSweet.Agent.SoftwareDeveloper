@@ -38,6 +38,7 @@ public sealed class ManifestTests
 
         Assert.Equal(
             [
+                SoftwareDeveloperProfile.TeamRosterCapability,
                 SoftwareDeveloperProfile.LlmCapability,
                 WorkItemCapabilities.Read,
                 WorkItemCapabilities.Start,

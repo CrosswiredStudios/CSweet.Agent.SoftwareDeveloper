@@ -62,6 +62,7 @@ The manifest provides `agent.configuration.describe.v1` and
 The installation requests:
 
 - `platform.llm.chat-stream.v1`;
+- `platform.team-roster.read.v1` for the assigned employee's bounded team roster only;
 - work-item-scoped `work.item.read`, `work.item.start`, `work.item.comment`, and
   `work.item.complete`;
 - work-item-scoped `git.workspace.prepare.v1`, `git.workspace.inspect.v1`,

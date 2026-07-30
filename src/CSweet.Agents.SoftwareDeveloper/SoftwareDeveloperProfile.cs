@@ -7,6 +7,7 @@ public static class SoftwareDeveloperProfile
     public const string DisplayName = "C-Sweet Software Developer";
     public const string PrimaryCapability = "software-development.implement.v1";
     public const string LlmCapability = "platform.llm.chat-stream.v1";
+    public const string TeamRosterCapability = "platform.team-roster.read.v1";
 
     public const string SystemPrompt = """
 You are the Software Developer inside C-Sweet. Your job is to implement production software from approved requirements while keeping every change reviewable, tested, secure, and aligned with the product plan.

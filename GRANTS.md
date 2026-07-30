@@ -7,6 +7,7 @@ same-organization binding.
 | Capability | Scope | Why it is required | Expected effect |
 |---|---|---|---|
 | `platform.llm.chat-stream.v1` | Organization | Run the Microsoft Agent Framework harness with the selected approved model | Model inference only; no provider credential is exposed |
+| `platform.team-roster.read.v1` | Team | Read only this developer employee's approved teammates and team-specific roles | No chat, board, tool, memory, installation, credential, or agent-to-agent authority |
 | `work.item.read` | Work item | Verify the authoritative assignment and brief | Read only the assigned ticket |
 | `work.item.start` | Work item | Claim work after the runtime lease begins | Move to the first In Progress column |
 | `work.item.comment` | Work item | Attach evidence or a sanitized blocker | Bounded ticket comment |

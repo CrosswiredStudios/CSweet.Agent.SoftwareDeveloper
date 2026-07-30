@@ -235,6 +235,11 @@
   ],
   "requires": [
     {
+      "name": "platform.team-roster.read.v1",
+      "scope": "team",
+      "purpose": "Read only this developer employee's approved teammates and team-specific roles"
+    },
+    {
       "name": "platform.llm.chat-stream.v1",
       "scope": "organization",
       "purpose": "Run the Microsoft Agent Framework harness with the installation's approved coding model"
