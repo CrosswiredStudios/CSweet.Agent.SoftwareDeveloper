@@ -1,0 +1,390 @@
+{
+  "$schema": "https://raw.githubusercontent.com/CrosswiredStudios/CSweetAgentSdk/main/schemas/csweet-plugin.v2.schema.json",
+  "manifestVersion": "2.0",
+  "kind": "agent",
+  "id": "com.csweet.software-developer",
+  "name": "C-Sweet Software Developer",
+  "version": "0.1.0",
+  "publisher": {
+    "id": "com.csweet",
+    "name": "C-Sweet"
+  },
+  "runtime": {
+    "type": "dotnet-project",
+    "projectPath": "src/CSweet.Agents.SoftwareDeveloper/CSweet.Agents.SoftwareDeveloper.csproj",
+    "targetFramework": "net10.0",
+    "defaultActivationMode": "Manual",
+    "supportsMultipleInstallations": true,
+    "maximumConcurrentJobs": 1,
+    "environmentProfile": "software-development-polyglot-v1",
+    "workspaceAccess": "ReadWrite"
+  },
+  "protocol": {
+    "minimumVersion": "2.0",
+    "maximumVersion": "2.x"
+  },
+  "provides": [
+    {
+      "name": "software-development.implement.v1",
+      "description": "Implement an approved software change in a granted repository and return a reviewable, evidence-backed report.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "repository",
+          "objective",
+          "requirements",
+          "acceptanceCriteria"
+        ],
+        "properties": {
+          "repository": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "objective": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "requirements": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "acceptanceCriteria": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "baseBranch": {
+            "type": ["string", "null"],
+            "maxLength": 255
+          },
+          "constraints": {
+            "type": ["array", "null"],
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "workId",
+          "report",
+          "completedAt"
+        ],
+        "properties": {
+          "workId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "report": {
+            "type": "string",
+            "minLength": 1
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "executionTimeoutSeconds": 900,
+      "idempotency": "work-item",
+      "riskClass": "elevated"
+    },
+    {
+      "name": "agent.configuration.describe.v1",
+      "description": "Describe Software Developer configuration.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "agentId",
+          "agentVersion",
+          "schemaVersion",
+          "fields",
+          "settings"
+        ],
+        "properties": {
+          "agentId": { "type": "string" },
+          "agentVersion": { "type": "string" },
+          "schemaVersion": { "type": "string" },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["key", "label", "type", "required"],
+              "properties": {
+                "key": { "type": "string" },
+                "label": { "type": "string" },
+                "type": { "type": "string" },
+                "required": { "type": "boolean" },
+                "description": { "type": ["string", "null"] },
+                "placeholder": { "type": ["string", "null"] },
+                "options": {
+                  "type": ["array", "null"],
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["value", "label"],
+                    "properties": {
+                      "value": { "type": "string" },
+                      "label": { "type": "string" }
+                    }
+                  }
+                },
+                "minimum": { "type": ["number", "null"] },
+                "maximum": { "type": ["number", "null"] },
+                "step": { "type": ["number", "null"] },
+                "dependsOnFieldKey": { "type": ["string", "null"] }
+              }
+            }
+          },
+          "settings": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "llmProviderId": { "type": "string" },
+              "llmModel": { "type": "string" },
+              "maxContextWindowTokens": { "type": "number" },
+              "maxOutputTokens": { "type": "number" },
+              "customInstructions": { "type": "string" }
+            }
+          }
+        }
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "none",
+      "riskClass": "standard"
+    },
+    {
+      "name": "agent.configuration.update.v1",
+      "description": "Update Software Developer configuration.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["settings"],
+        "properties": {
+          "settings": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "llmProviderId": { "type": "string" },
+              "llmModel": { "type": "string" },
+              "maxContextWindowTokens": {
+                "type": "number",
+                "minimum": 16000,
+                "maximum": 2000000
+              },
+              "maxOutputTokens": {
+                "type": "number",
+                "minimum": 1000,
+                "maximum": 200000
+              },
+              "customInstructions": { "type": "string" }
+            }
+          }
+        }
+      },
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["succeeded", "settings"],
+        "properties": {
+          "succeeded": { "type": "boolean" },
+          "message": { "type": ["string", "null"] },
+          "settings": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "llmProviderId": { "type": "string" },
+              "llmModel": { "type": "string" },
+              "maxContextWindowTokens": { "type": "number" },
+              "maxOutputTokens": { "type": "number" },
+              "customInstructions": { "type": "string" }
+            }
+          }
+        }
+      },
+      "executionTimeoutSeconds": 30,
+      "idempotency": "work-item",
+      "riskClass": "standard"
+    }
+  ],
+  "requires": [
+    {
+      "name": "platform.llm.chat-stream.v1",
+      "scope": "organization",
+      "purpose": "Run the Microsoft Agent Framework harness with the installation's approved coding model"
+    },
+    {
+      "name": "work.item.read",
+      "scope": "work-item",
+      "purpose": "Re-read the authoritative assigned development ticket"
+    },
+    {
+      "name": "work.item.start",
+      "scope": "work-item",
+      "purpose": "Move the claimed ticket to the board's first In Progress column"
+    },
+    {
+      "name": "work.item.comment",
+      "scope": "work-item",
+      "purpose": "Attach bounded validation evidence or a sanitized blocker to the assigned ticket"
+    },
+    {
+      "name": "work.item.complete",
+      "scope": "work-item",
+      "purpose": "Move a validated ticket with a reviewable pull request to Done"
+    },
+    {
+      "name": "git.workspace.prepare.v1",
+      "scope": "work-item",
+      "purpose": "Clone or resume the ticket's installation-granted repository workspace"
+    },
+    {
+      "name": "git.workspace.inspect.v1",
+      "scope": "work-item",
+      "purpose": "Collect sanitized changed-file and commit metadata"
+    },
+    {
+      "name": "git.workspace.publish.v1",
+      "scope": "work-item",
+      "purpose": "Push only the deterministic ticket branch and create a configured pull request"
+    },
+    {
+      "name": "git.workspace.cleanup.v1",
+      "scope": "work-item",
+      "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
+    }
+  ],
+  "events": {
+    "subscribes": ["work.item.assigned.v1"]
+  },
+  "configuration": [
+    {
+      "key": "llmProviderId",
+      "type": "provider",
+      "label": "LLM provider",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "llmModel",
+      "type": "model",
+      "label": "Model",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "customInstructions",
+      "type": "textarea",
+      "label": "Custom instructions",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "maxContextWindowTokens",
+      "type": "number",
+      "label": "Maximum context-window tokens",
+      "required": true,
+      "secret": false
+    },
+    {
+      "key": "maxOutputTokens",
+      "type": "number",
+      "label": "Maximum output tokens",
+      "required": true,
+      "secret": false
+    }
+  ],
+  "credentials": [],
+  "webAccess": {
+    "mode": "Allowlist",
+    "rules": [
+      {
+        "scheme": "https",
+        "host": "api.nuget.org",
+        "port": 443,
+        "pathPrefix": "/",
+        "methods": ["GET"],
+        "protocol": "http",
+        "purpose": "Restore approved public NuGet packages"
+      },
+      {
+        "scheme": "https",
+        "host": "registry.npmjs.org",
+        "port": 443,
+        "pathPrefix": "/",
+        "methods": ["GET"],
+        "protocol": "http",
+        "purpose": "Restore approved public npm packages"
+      },
+      {
+        "scheme": "https",
+        "host": "pypi.org",
+        "port": 443,
+        "pathPrefix": "/",
+        "methods": ["GET"],
+        "protocol": "http",
+        "purpose": "Resolve approved public Python packages"
+      },
+      {
+        "scheme": "https",
+        "host": "files.pythonhosted.org",
+        "port": 443,
+        "pathPrefix": "/",
+        "methods": ["GET"],
+        "protocol": "http",
+        "purpose": "Download approved public Python packages"
+      }
+    ],
+    "purpose": "Restore dependencies through the C-Sweet egress gateway; repository hosts come from installation grants"
+  },
+  "ui": [
+    {
+      "kind": "form",
+      "id": "software-developer-settings",
+      "title": "Software Developer settings",
+      "capability": "agent.configuration.update.v1"
+    }
+  ],
+  "catalog": {
+    "summary": "Implements production software from approved requirements while keeping changes reviewable, tested, and aligned with the product plan.",
+    "category": "Engineering",
+    "roleAliases": [
+      "Software Developer",
+      "Software Engineer",
+      "Application Developer"
+    ],
+    "keywords": [
+      "engineering",
+      "implementation",
+      "software delivery",
+      "GitHub"
+    ],
+    "documentationUrl": "README.md"
+  }
+}

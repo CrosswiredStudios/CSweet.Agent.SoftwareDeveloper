@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="CSweet.Agent.SDK" Version="2.1.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Harness" Version="1.15.0" />
+    <PackageReference Include="Microsoft.Agents.AI.Tools.Shell" Version="1.15.0-preview.260722.1" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\csweet-plugin.json"
+             Link="csweet-plugin.json"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
