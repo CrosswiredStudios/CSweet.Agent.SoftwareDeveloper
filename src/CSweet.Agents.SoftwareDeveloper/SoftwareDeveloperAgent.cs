@@ -306,7 +306,12 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 development.RepositoryConnectionId,
                 development.BaseBranch,
                 branch,
-                EventKey(message.EventId, "prepare")),
+                EventKey(message.EventId, "prepare"))
+            {
+                ExpectedCommitSha = development.ResumeCommitSha,
+                ResumePublishedBranch = !string.IsNullOrWhiteSpace(
+                    development.ResumeBranch)
+            },
             cancellationToken);
 
         var workspacePath = Path.GetFullPath(workspace.Path);
@@ -476,7 +481,10 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 item.Development!.BaseBranch,
                 item.Development.Requirements,
                 item.Development.AcceptanceCriteria,
-                constraints = item.Development.Constraints ?? []
+                constraints = item.Development.Constraints ?? [],
+                resumeBranch = item.Development.ResumeBranch,
+                resumeCommitSha = item.Development.ResumeCommitSha,
+                qaFindings = item.Development.ReworkFindings ?? []
             },
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         return $$"""
