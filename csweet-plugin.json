@@ -25,6 +25,23 @@
   },
   "provides": [
     {
+      "name": "work.execution.run.v1",
+      "description": "Execute one pinned board workflow stage and return a structured outcome without mutating the card transition.",
+      "inputSchema": {
+        "type": "object",
+        "required": ["stageExecutionId", "attemptId", "boardId", "itemId", "stageKey", "instructions", "item", "input"],
+        "additionalProperties": true
+      },
+      "outputSchema": {
+        "type": "object",
+        "required": ["stageExecutionId", "attemptId", "disposition", "outcomeCode", "summary", "output", "evidence", "diagnostics"],
+        "additionalProperties": true
+      },
+      "executionTimeoutSeconds": 3600,
+      "idempotency": "work-item",
+      "riskClass": "elevated"
+    },
+    {
       "name": "software-development.implement.v1",
       "description": "Implement an approved software change in a granted repository and return a reviewable, evidence-backed report.",
       "inputSchema": {
@@ -250,19 +267,9 @@
       "purpose": "Re-read the authoritative assigned development ticket"
     },
     {
-      "name": "work.item.start",
-      "scope": "work-item",
-      "purpose": "Move the claimed ticket to the board's first In Progress column"
-    },
-    {
       "name": "work.item.comment",
       "scope": "work-item",
       "purpose": "Attach bounded validation evidence or a sanitized blocker to the assigned ticket"
-    },
-    {
-      "name": "work.item.complete",
-      "scope": "work-item",
-      "purpose": "Move a validated ticket with a reviewable pull request to Done"
     },
     {
       "name": "git.workspace.prepare.v1",
@@ -285,9 +292,7 @@
       "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
     }
   ],
-  "events": {
-    "subscribes": ["work.item.assigned.v1"]
-  },
+  "events": { "subscribes": [] },
   "configuration": [
     {
       "key": "llmProviderId",

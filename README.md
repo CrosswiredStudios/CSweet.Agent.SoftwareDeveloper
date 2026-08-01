@@ -54,8 +54,10 @@ Each installation must select:
 - `customInstructions` (optional): repository-independent style or delivery guidance that cannot
   expand authority.
 
-The manifest provides `agent.configuration.describe.v1` and
-`agent.configuration.update.v1`, plus a settings form contribution.
+The manifest provides `agent.configuration.describe.v1`,
+`agent.configuration.update.v1`, `software-development.implement.v1`, and
+`work.execution.run.v1`, plus a settings form contribution. C-Sweet owns every automated
+stage transition; the agent returns only a structured outcome and evidence.
 
 ## Required grants
 
@@ -63,12 +65,11 @@ The installation requests:
 
 - `platform.llm.chat-stream.v1`;
 - `platform.team-roster.read.v1` for the assigned employee's bounded team roster only;
-- work-item-scoped `work.item.read`, `work.item.start`, `work.item.comment`, and
-  `work.item.complete`;
+- work-item-scoped `work.item.read` and `work.item.comment`;
 - work-item-scoped `git.workspace.prepare.v1`, `git.workspace.inspect.v1`,
   `git.workspace.publish.v1`, and `git.workspace.cleanup.v1`.
 
-Assignment creates the least-privilege work-item grants. The repository connection and its
+The durable orchestration attempt creates the least-privilege work-item grants. The repository connection and its
 credentials are separately granted to the exact installation. See [GRANTS.md](GRANTS.md).
 
 ## Example request

@@ -18,6 +18,7 @@ public sealed class ManifestTests
         Assert.Equal(agent.AgentId, manifest.Id);
         Assert.Equal(agent.Version, manifest.Version);
         Assert.Contains(SoftwareDeveloperProfile.PrimaryCapability, manifest.Capabilities);
+        Assert.Contains(WorkManagementCapabilityNames.ExecutionRunV1, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         Assert.True(File.Exists(Path.Combine(
@@ -41,9 +42,7 @@ public sealed class ManifestTests
                 SoftwareDeveloperProfile.TeamRosterCapability,
                 SoftwareDeveloperProfile.LlmCapability,
                 WorkItemCapabilities.Read,
-                WorkItemCapabilities.Start,
                 WorkItemCapabilities.Comment,
-                WorkItemCapabilities.Complete,
                 GitWorkspaceCapabilities.Prepare,
                 GitWorkspaceCapabilities.Inspect,
                 GitWorkspaceCapabilities.Publish,
@@ -58,10 +57,7 @@ public sealed class ManifestTests
             root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal("Allowlist", root.GetProperty("webAccess").GetProperty("mode").GetString());
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
-        Assert.Equal(
-            [WorkItemEvents.Assigned],
-            root.GetProperty("events").GetProperty("subscribes")
-                .EnumerateArray().Select(x => x.GetString()!).ToArray());
+        Assert.Empty(root.GetProperty("events").GetProperty("subscribes").EnumerateArray());
     }
 
     [Fact]

@@ -40,69 +40,6 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 
     public override string Version => SoftwareDeveloperProfile.Version;
 
-    public override async Task HandleEventAsync(
-        AgentEventEnvelope message,
-        AgentRuntimeContext context,
-        CancellationToken cancellationToken)
-    {
-        if (!string.Equals(message.EventType, WorkItemEvents.Assigned, StringComparison.Ordinal))
-            return;
-
-        var assigned = DeserializePayload<WorkItemAssignedEvent>(message.Data)
-            ?? throw new InvalidOperationException("The assignment event payload is missing.");
-        if (!Guid.TryParse(context.InstallationId, out var installationId) ||
-            installationId != assigned.AssignedInstallationId)
-            throw new UnauthorizedAccessException(
-                "The assignment event targets a different developer installation.");
-
-        var item = await context.Platform.Work.ReadItemAsync(
-            new WorkItemReference(assigned.BoardId, assigned.ItemId),
-            cancellationToken);
-        if (item.AssignedInstallationId != installationId ||
-            item.Development is null)
-            return;
-
-        if (item.Status is "Completed" or "Cancelled")
-            return;
-        var started = string.Equals(item.Status, "Running", StringComparison.Ordinal)
-            ? item
-            : await context.Platform.Work.StartAsync(
-                new TransitionWorkItemRequest(
-                    assigned.BoardId,
-                    assigned.ItemId,
-                    item.Revision,
-                    EventKey(message.EventId, "start")),
-                cancellationToken);
-
-        try
-        {
-            await ExecuteAssignedTicketAsync(
-                message,
-                assigned,
-                started,
-                context,
-                cancellationToken);
-        }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
-        catch (Exception exception)
-        {
-            _logger.LogError(
-                exception,
-                "Software Developer failed assigned work item {WorkItemId}.",
-                assigned.ItemId);
-            await TryCommentBlockerAsync(
-                context,
-                assigned,
-                message.EventId,
-                SanitizeBlocker(exception.Message),
-                cancellationToken);
-            throw;
-        }
-    }
-
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) =>
         builder
             .LlmProvider(
@@ -146,6 +83,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (string.Equals(request.Capability, WorkManagementCapabilityNames.ExecutionRunV1, StringComparison.Ordinal))
+            return await ExecuteOrchestratedWorkAsync(request, context, cancellationToken);
         if (!string.Equals(
                 request.Capability,
                 SoftwareDeveloperProfile.PrimaryCapability,
@@ -279,9 +218,48 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         }
     }
 
-    private async Task ExecuteAssignedTicketAsync(
-        AgentEventEnvelope message,
-        WorkItemAssignedEvent assigned,
+    private async Task<AgentWorkResult> ExecuteOrchestratedWorkAsync(
+        AgentCapabilityRequest request,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        WorkExecutionAssignmentV1? assignment;
+        try { assignment = DeserializePayload<WorkExecutionAssignmentV1>(request.Arguments); }
+        catch (JsonException) { return AgentWorkResult.Failure("The orchestration assignment is invalid JSON."); }
+        if (assignment is null || assignment.AttemptId == Guid.Empty || assignment.StageExecutionId == Guid.Empty)
+            return AgentWorkResult.Failure("The orchestration assignment is incomplete.");
+        try
+        {
+            var item = await context.Platform.Work.ReadItemAsync(
+                new WorkItemReference(assignment.BoardId, assignment.ItemId), cancellationToken);
+            if (item.Development is null)
+                throw new InvalidOperationException("The development stage requires a software development brief.");
+            var output = await ExecuteAssignedTicketAsync(
+                assignment.AttemptId, assignment.BoardId, item, context, cancellationToken);
+            var outcome = new WorkExecutionOutcomeV1(
+                assignment.StageExecutionId, assignment.AttemptId,
+                WorkExecutionDispositions.Completed, "completed", output.Summary,
+                JsonSerializer.SerializeToElement(output),
+                [
+                    new WorkExecutionEvidence("pull-request", "Pull request", output.PullRequestUrl.ToString()),
+                    new WorkExecutionEvidence("commit", "Source commit", output.CommitSha)
+                ], []);
+            return AgentWorkResult.Success(outcome);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Orchestrated development stage {StageExecutionId} is blocked.", assignment.StageExecutionId);
+            return AgentWorkResult.Success(new WorkExecutionOutcomeV1(
+                assignment.StageExecutionId, assignment.AttemptId,
+                WorkExecutionDispositions.Blocked, "blocked", SanitizeBlocker(exception.Message),
+                JsonSerializer.SerializeToElement(new { }), [], [SanitizeBlocker(exception.Message)]));
+        }
+    }
+
+    private async Task<DevelopmentStageOutput> ExecuteAssignedTicketAsync(
+        Guid operationId,
+        Guid boardId,
         WorkItem item,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
@@ -302,11 +280,11 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         var workspace = await context.Platform.Git.PrepareAsync(
             new PrepareGitWorkspaceRequest(
                 item.Id,
-                assigned.AssignmentRevision,
+                0,
                 development.RepositoryConnectionId,
                 development.BaseBranch,
                 branch,
-                EventKey(message.EventId, "prepare"))
+                EventKey(operationId, "prepare"))
             {
                 ExpectedCommitSha = development.ResumeCommitSha,
                 ResumePublishedBranch = !string.IsNullOrWhiteSpace(
@@ -350,7 +328,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             cancellationToken);
         var session = await harness.CreateSessionAsync(cancellationToken);
         var response = await harness.RunAsync(
-            BuildAssignmentPrompt(message.EventId, item, assigned.AssignmentRevision),
+            BuildAssignmentPrompt(operationId, item, 0),
             session,
             options: null,
             cancellationToken);
@@ -362,13 +340,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
         {
-            await TryCommentBlockerAsync(
-                context,
-                assigned,
-                message.EventId,
-                FailedValidationSummary(outcome),
-                cancellationToken);
-            return;
+            throw new InvalidOperationException(FailedValidationSummary(outcome));
         }
 
         var inspection = await context.Platform.Git.InspectAsync(
@@ -376,13 +348,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             cancellationToken);
         if (!inspection.HasChanges)
         {
-            await TryCommentBlockerAsync(
-                context,
-                assigned,
-                message.EventId,
-                "Validation passed, but the assignment workspace contains no reviewable changes.",
-                cancellationToken);
-            return;
+            throw new InvalidOperationException(
+                "Validation passed, but the assignment workspace contains no reviewable changes.");
         }
 
         var publication = await context.Platform.Git.PublishAsync(
@@ -391,7 +358,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 $"Implement {item.Title}",
                 item.Title,
                 BuildPullRequestBody(item, outcome),
-                EventKey(message.EventId, "publish"),
+                EventKey(operationId, "publish"),
                 outcome.Validations.Select(x => new GitValidationResult(
                     x.Command,
                     x.Succeeded,
@@ -400,28 +367,16 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             cancellationToken);
         if (!publication.Pushed || publication.PullRequestUrl is null)
         {
-            await TryCommentBlockerAsync(
-                context,
-                assigned,
-                message.EventId,
-                $"Branch `{publication.BranchName}` was published, but no compatible review provider created a pull request.",
-                cancellationToken);
-            return;
+            throw new InvalidOperationException(
+                $"Branch `{publication.BranchName}` was published, but no compatible review provider created a pull request.");
         }
 
         await context.Platform.Work.CommentAsync(
             new CommentOnWorkItemRequest(
-                assigned.BoardId,
-                assigned.ItemId,
+                boardId,
+                item.Id,
                 BuildEvidenceComment(outcome, inspection, publication),
-                EventKey(message.EventId, "evidence")),
-            cancellationToken);
-        await context.Platform.Work.CompleteAsync(
-            new TransitionWorkItemRequest(
-                assigned.BoardId,
-                assigned.ItemId,
-                ExpectedRevision: item.Revision,
-                IdempotencyKey: EventKey(message.EventId, "complete")),
+                EventKey(operationId, "evidence")),
             cancellationToken);
         await context.Platform.Git.CleanupAsync(
             new CleanupGitWorkspaceRequest(workspace.WorkspaceId, RetainOnFailure: true),
@@ -435,6 +390,14 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 pullRequestUrl = publication.PullRequestUrl
             },
             cancellationToken);
+        return new DevelopmentStageOutput(
+            item.Development.RepositoryConnectionId,
+            publication.BranchName,
+            publication.CommitSha,
+            publication.PullRequestUrl,
+            outcome.Summary,
+            outcome.ChangedFiles,
+            outcome.Validations);
     }
 
     private static async Task<SoftwareDevelopmentOutcome> ReadOutcomeAsync(

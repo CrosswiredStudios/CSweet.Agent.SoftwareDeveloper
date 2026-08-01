@@ -4,9 +4,16 @@
     <Version>0.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CSweet.Agent.SDK" Version="2.3.0" />
+    <PackageReference Include="CSweet.Agent.SDK" Version="2.3.0" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
+    <PackageReference Include="CSweet.WorkManagement.Contracts" Version="2.0.0" Condition="'$(UseLocalCSweetWorkManagementContracts)' != 'true'" />
     <PackageReference Include="Microsoft.Agents.AI.Harness" Version="1.15.0" />
     <PackageReference Include="Microsoft.Agents.AI.Tools.Shell" Version="1.15.0-preview.260722.1" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalCSweetWorkManagementContracts)' == 'true'">
+    <ProjectReference Include="$(CSweetWorkManagementContractsRepositoryRoot)\src\CSweet.WorkManagement.Contracts\CSweet.WorkManagement.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(UseLocalCSweetAgentSdk)' == 'true'">
+    <ProjectReference Include="$(CSweetAgentSdkRepositoryRoot)\src\CSweet.Agent.SDK\CSweet.Agent.SDK.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\..\csweet-plugin.json"

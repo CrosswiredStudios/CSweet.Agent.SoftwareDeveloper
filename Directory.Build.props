@@ -4,5 +4,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <CSweetWorkManagementContractsRepositoryRoot Condition="'$(CSweetWorkManagementContractsRepositoryRoot)' == ''">$(MSBuildThisFileDirectory)..\CSweet.WorkManagement.Contracts</CSweetWorkManagementContractsRepositoryRoot>
+    <UseLocalCSweetWorkManagementContracts Condition="'$(UseLocalCSweetWorkManagementContracts)' == '' and Exists('$(CSweetWorkManagementContractsRepositoryRoot)\src\CSweet.WorkManagement.Contracts\CSweet.WorkManagement.Contracts.csproj')">true</UseLocalCSweetWorkManagementContracts>
+    <UseLocalCSweetWorkManagementContracts Condition="'$(UseLocalCSweetWorkManagementContracts)' == ''">false</UseLocalCSweetWorkManagementContracts>
+    <CSweetAgentSdkRepositoryRoot Condition="'$(CSweetAgentSdkRepositoryRoot)' == ''">$(MSBuildThisFileDirectory)..\CSweetAgentSdk</CSweetAgentSdkRepositoryRoot>
+    <UseLocalCSweetAgentSdk Condition="'$(UseLocalCSweetAgentSdk)' == '' and Exists('$(CSweetAgentSdkRepositoryRoot)\src\CSweet.Agent.SDK\CSweet.Agent.SDK.csproj')">true</UseLocalCSweetAgentSdk>
+    <UseLocalCSweetAgentSdk Condition="'$(UseLocalCSweetAgentSdk)' == ''">false</UseLocalCSweetAgentSdk>
   </PropertyGroup>
 </Project>

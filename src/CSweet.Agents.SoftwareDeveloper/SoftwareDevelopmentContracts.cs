@@ -1,5 +1,14 @@
 namespace CSweet.Agents.SoftwareDeveloper;
 
+public sealed record DevelopmentStageOutput(
+    Guid RepositoryConnectionId,
+    string SourceBranch,
+    string CommitSha,
+    Uri PullRequestUrl,
+    string Summary,
+    IReadOnlyList<string> ChangedFiles,
+    IReadOnlyList<SoftwareDevelopmentValidation> Validations);
+
 public sealed record SoftwareDevelopmentRequest(
     string? Repository,
     string? Objective,

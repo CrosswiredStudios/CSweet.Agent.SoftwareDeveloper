@@ -186,11 +186,10 @@ public sealed class SoftwareDeveloperAgentTests
                     DateTimeOffset.UtcNow,
                     null)));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            runtime.DeliverEventAsync(
-                new SoftwareDeveloperAgent(),
-                WorkItemEvents.Assigned,
-                new WorkItemAssignedEvent(boardId, itemId, 1, installationId)));
+        await runtime.DeliverEventAsync(
+            new SoftwareDeveloperAgent(),
+            WorkItemEvents.Assigned,
+            new WorkItemAssignedEvent(boardId, itemId, 1, installationId));
 
         Assert.Equal(0, starts);
     }

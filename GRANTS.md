@@ -8,10 +8,9 @@ same-organization binding.
 |---|---|---|---|
 | `platform.llm.chat-stream.v1` | Organization | Run the Microsoft Agent Framework harness with the selected approved model | Model inference only; no provider credential is exposed |
 | `platform.team-roster.read.v1` | Team | Read only this developer employee's approved teammates and team-specific roles | No chat, board, tool, memory, installation, credential, or agent-to-agent authority |
+| `work.execution.run.v1` | Orchestration attempt | Execute the exact assigned Development stage | Return a structured outcome; never transition the card |
 | `work.item.read` | Work item | Verify the authoritative assignment and brief | Read only the assigned ticket |
-| `work.item.start` | Work item | Claim work after the runtime lease begins | Move to the first In Progress column |
 | `work.item.comment` | Work item | Attach evidence or a sanitized blocker | Bounded ticket comment |
-| `work.item.complete` | Work item | Finish only validated, reviewable work | Move to the first Done column |
 | `git.workspace.prepare.v1` | Work item | Clone/fetch and resume the assignment checkout | Deterministic installation workspace and ticket branch |
 | `git.workspace.inspect.v1` | Work item | Read sanitized diff and commit metadata | No credential values |
 | `git.workspace.publish.v1` | Work item | Commit, push the ticket branch, and create the configured PR | No force push, merge, or protected-branch write |
