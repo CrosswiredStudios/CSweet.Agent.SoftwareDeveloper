@@ -113,4 +113,4 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 2.7.0 and `CSweet.WorkManagement.Contracts` 1.1.0.
+Built with `CSweet.Agent.SDK` 2.7.0 and `CSweet.WorkManagement.Contracts` 2.1.0.
