@@ -21,6 +21,16 @@ public sealed class ManifestTests
         Assert.Contains(WorkManagementCapabilityNames.ExecutionRunV1, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        var configuration = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
+        Assert.Equal(
+            SoftwareDeveloperHarness.MaxContextWindowTokens,
+            configuration.Single(field => field.GetProperty("key").GetString() == "maxContextWindowTokens")
+                .GetProperty("defaultValue").GetInt32());
+        Assert.Equal(
+            SoftwareDeveloperHarness.MaxOutputTokens,
+            configuration.Single(field => field.GetProperty("key").GetString() == "maxOutputTokens")
+                .GetProperty("defaultValue").GetInt32());
         Assert.True(File.Exists(Path.Combine(
             root,
             manifest.Runtime.ProjectPath!.Replace('/', Path.DirectorySeparatorChar))));

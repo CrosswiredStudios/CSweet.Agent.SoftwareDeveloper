@@ -320,14 +320,16 @@
       "type": "number",
       "label": "Maximum context-window tokens",
       "required": true,
-      "secret": false
+      "secret": false,
+      "defaultValue": 128000
     },
     {
       "key": "maxOutputTokens",
       "type": "number",
       "label": "Maximum output tokens",
       "required": true,
-      "secret": false
+      "secret": false,
+      "defaultValue": 16000
     }
   ],
   "credentials": [],
