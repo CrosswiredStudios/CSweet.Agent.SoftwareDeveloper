@@ -11,10 +11,11 @@ same-organization binding.
 | `work.execution.run.v1` | Orchestration attempt | Execute the exact assigned Development stage | Return a structured outcome; never transition the card |
 | `work.item.read` | Work item | Verify the authoritative assignment and brief | Read only the assigned ticket |
 | `work.item.comment` | Work item | Attach evidence or a sanitized blocker | Bounded ticket comment |
-| `git.workspace.prepare.v1` | Work item | Clone/fetch and resume the assignment checkout | Deterministic installation workspace and ticket branch |
-| `git.workspace.inspect.v1` | Work item | Read sanitized diff and commit metadata | No credential values |
-| `git.workspace.publish.v1` | Work item | Commit, push the ticket branch, and create the configured PR | No force push, merge, or protected-branch write |
-| `git.workspace.cleanup.v1` | Work item | Remove successful work or retain a failure for recovery | Assignment-directory-only cleanup |
+| `git.workspace.prepare.v2` | Work item | Materialize the Core-resolved credential-free snapshot | No caller-selected repository, ref, branch, `.git`, or credentials |
+| `git.workspace.refresh.v2` | Work item | Refresh against the Core-authorized base | Structured bounded conflicts only |
+| `git.workspace.inspect.v2` | Work item | Read bounded diff metadata | No credential values or Git metadata |
+| `git.workspace.publish.v2` | Work item | Submit the change artifact to trusted GitHost | No direct push, merge, or protected-branch write |
+| `git.workspace.cleanup.v2` | Work item | Remove successful work or retain a failure for recovery | Assignment-directory-only cleanup |
 
 ## Platform broker expectations
 

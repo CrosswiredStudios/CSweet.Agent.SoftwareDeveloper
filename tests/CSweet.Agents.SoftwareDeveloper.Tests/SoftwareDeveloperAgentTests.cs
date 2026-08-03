@@ -245,28 +245,20 @@ public sealed class SoftwareDeveloperAgentTests
     }
 
     [Fact]
-    public void DeterministicBranch_IsStableAndTicketScoped()
+    public void AgentDoesNotSelectTheTicketBranch()
     {
         var method = typeof(SoftwareDeveloperAgent).GetMethod(
             "DeterministicBranch",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
-        var itemId = Guid.Parse("8f06f73d-757f-4402-81d6-626a2eeb18a3");
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
 
-        var first = (string)method.Invoke(null, [itemId, "Add OAuth: GitHub App"])!;
-        var duplicate = (string)method.Invoke(null, [itemId, "Add OAuth: GitHub App"])!;
-
-        Assert.Equal(first, duplicate);
-        Assert.StartsWith($"csweet/{itemId:N}-", first, StringComparison.Ordinal);
-        Assert.Equal("csweet/8f06f73d757f440281d6626a2eeb18a3-add-oauth-github-app", first);
+        Assert.Null(method);
     }
 
     private static SoftwareDevelopmentRequest ValidRequest() =>
         new(
-            "CrosswiredStudios/example",
             "Add the approved behavior.",
             ["Preserve the existing public API."],
             ["Focused tests pass."],
-            BaseBranch: "main",
             Constraints: ["Do not merge the pull request."]);
 
     private static WorkItem AssignedItem(
@@ -291,7 +283,6 @@ public sealed class SoftwareDeveloperAgentTests
             AssignedDisplayName: "Developer",
             Development: new SoftwareDevelopmentBrief(
                 Guid.NewGuid(),
-                "main",
                 "software-development-polyglot-v1",
                 ["Implement the change."],
                 ["Tests pass."]));

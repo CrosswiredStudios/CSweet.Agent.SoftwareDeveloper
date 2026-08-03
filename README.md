@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.2.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `0.3.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -66,8 +66,8 @@ The installation requests:
 - `platform.llm.chat-stream.v1`;
 - `platform.team-roster.read.v1` for the assigned employee's bounded team roster only;
 - work-item-scoped `work.item.read` and `work.item.comment`;
-- work-item-scoped `git.workspace.prepare.v1`, `git.workspace.inspect.v1`,
-  `git.workspace.publish.v1`, and `git.workspace.cleanup.v1`.
+- work-item-scoped `git.workspace.prepare.v2`, `git.workspace.refresh.v2`,
+  `git.workspace.inspect.v2`, `git.workspace.publish.v2`, and `git.workspace.cleanup.v2`.
 
 The durable orchestration attempt creates the least-privilege work-item grants. The repository connection and its
 credentials are separately granted to the exact installation. See [GRANTS.md](GRANTS.md).
@@ -113,4 +113,4 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 2.7.0 and `CSweet.WorkManagement.Contracts` 2.1.0.
+Built with `CSweet.Agent.SDK` 3.0.0 and `CSweet.WorkManagement.Contracts` 3.0.0.

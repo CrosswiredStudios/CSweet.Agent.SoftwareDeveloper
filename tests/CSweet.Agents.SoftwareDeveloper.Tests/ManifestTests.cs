@@ -54,6 +54,7 @@ public sealed class ManifestTests
                 WorkItemCapabilities.Read,
                 WorkItemCapabilities.Comment,
                 GitWorkspaceCapabilities.Prepare,
+                GitWorkspaceCapabilities.Refresh,
                 GitWorkspaceCapabilities.Inspect,
                 GitWorkspaceCapabilities.Publish,
                 GitWorkspaceCapabilities.Cleanup

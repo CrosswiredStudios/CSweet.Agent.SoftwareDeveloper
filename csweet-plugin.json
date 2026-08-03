@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-developer",
   "name": "C-Sweet Software Developer",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -272,22 +272,27 @@
       "purpose": "Attach bounded validation evidence or a sanitized blocker to the assigned ticket"
     },
     {
-      "name": "git.workspace.prepare.v1",
+      "name": "git.workspace.prepare.v2",
       "scope": "work-item",
       "purpose": "Clone or resume the ticket's installation-granted repository workspace"
     },
     {
-      "name": "git.workspace.inspect.v1",
+      "name": "git.workspace.refresh.v2",
+      "reason": "Refreshes the assigned credential-free workspace against its Core-authorized base.",
+      "required": true
+    },
+    {
+      "name": "git.workspace.inspect.v2",
       "scope": "work-item",
       "purpose": "Collect sanitized changed-file and commit metadata"
     },
     {
-      "name": "git.workspace.publish.v1",
+      "name": "git.workspace.publish.v2",
       "scope": "work-item",
       "purpose": "Push only the deterministic ticket branch and create a configured pull request"
     },
     {
-      "name": "git.workspace.cleanup.v1",
+      "name": "git.workspace.cleanup.v2",
       "scope": "work-item",
       "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
     }

@@ -10,7 +10,6 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 {
-    private const int MaxRepositoryLength = 500;
     private const int MaxObjectiveLength = 8_000;
     private const int MaxListItems = 100;
     private const int MaxListItemLength = 4_000;
@@ -132,19 +131,13 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             new
             {
                 stage = "accepted",
-                message = "Implementation request accepted.",
-                repository = input!.Repository
+                message = "Implementation request accepted."
             },
             cancellationToken);
 
         try
         {
-            var workspacePath = Path.GetFullPath(input!.Repository!);
-            if (!workspacePath.StartsWith(
-                    Path.GetFullPath("/workspace") + Path.DirectorySeparatorChar,
-                    StringComparison.Ordinal))
-                return AgentWorkResult.Failure(
-                    "Direct implementation requests must name an existing assignment workspace.");
+            var workspacePath = Path.GetFullPath("/workspace");
             await using var shell = SoftwareDeveloperHarness.CreateShell(workspacePath);
 
             var selection = new AgentLlmSelection(providerProfileId.Value, model);
@@ -171,7 +164,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 
             var session = await harness.CreateSessionAsync(cancellationToken);
             var response = await harness.RunAsync(
-                BuildPrompt(request.WorkId, input),
+                BuildPrompt(request.WorkId, input!),
                 session,
                 options: null,
                 cancellationToken);
@@ -235,15 +228,20 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             if (item.Development is null)
                 throw new InvalidOperationException("The development stage requires a software development brief.");
             var output = await ExecuteAssignedTicketAsync(
-                assignment.AttemptId, assignment.BoardId, item, context, cancellationToken);
+                assignment.AttemptId, assignment.AssignmentRevision,
+                assignment.BoardId, item, context, cancellationToken);
+            var evidence = new List<WorkExecutionEvidence>
+            {
+                new("commit", "Source commit", output.CommitSha)
+            };
+            if (output.PullRequestUrl is not null)
+                evidence.Add(new WorkExecutionEvidence(
+                    "pull-request", "Proposed change", output.PullRequestUrl.ToString()));
             var outcome = new WorkExecutionOutcomeV1(
                 assignment.StageExecutionId, assignment.AttemptId,
                 WorkExecutionDispositions.Completed, "completed", output.Summary,
                 JsonSerializer.SerializeToElement(output),
-                [
-                    new WorkExecutionEvidence("pull-request", "Pull request", output.PullRequestUrl.ToString()),
-                    new WorkExecutionEvidence("commit", "Source commit", output.CommitSha)
-                ], []);
+                evidence, []);
             return AgentWorkResult.Success(outcome);
         }
         catch (OperationCanceledException) { throw; }
@@ -259,6 +257,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 
     private async Task<DevelopmentStageOutput> ExecuteAssignedTicketAsync(
         Guid operationId,
+        long assignmentRevision,
         Guid boardId,
         WorkItem item,
         AgentRuntimeContext context,
@@ -273,23 +272,14 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             throw new InvalidOperationException(
                 "Configure an approved coding model before assigning development work.");
 
-        var branch = DeterministicBranch(item.Id, item.Title);
         await context.ReportProgressAsync(
-            new { stage = "preparing-workspace", itemId = item.Id, branch },
+            new { stage = "preparing-workspace", itemId = item.Id, assignmentRevision },
             cancellationToken);
         var workspace = await context.Platform.Git.PrepareAsync(
             new PrepareGitWorkspaceRequest(
                 item.Id,
-                0,
-                development.RepositoryConnectionId,
-                development.BaseBranch,
-                branch,
-                EventKey(operationId, "prepare"))
-            {
-                ExpectedCommitSha = development.ResumeCommitSha,
-                ResumePublishedBranch = !string.IsNullOrWhiteSpace(
-                    development.ResumeBranch)
-            },
+                assignmentRevision,
+                EventKey(operationId, "prepare")),
             cancellationToken);
 
         var workspacePath = Path.GetFullPath(workspace.Path);
@@ -328,7 +318,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             cancellationToken);
         var session = await harness.CreateSessionAsync(cancellationToken);
         var response = await harness.RunAsync(
-            BuildAssignmentPrompt(operationId, item, 0),
+            BuildAssignmentPrompt(operationId, item, assignmentRevision),
             session,
             options: null,
             cancellationToken);
@@ -344,7 +334,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         }
 
         var inspection = await context.Platform.Git.InspectAsync(
-            new InspectGitWorkspaceRequest(workspace.WorkspaceId),
+            new InspectGitWorkspaceRequest(
+                workspace.WorkspaceId, assignmentRevision),
             cancellationToken);
         if (!inspection.HasChanges)
         {
@@ -355,6 +346,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         var publication = await context.Platform.Git.PublishAsync(
             new PublishGitWorkspaceRequest(
                 workspace.WorkspaceId,
+                assignmentRevision,
                 $"Implement {item.Title}",
                 item.Title,
                 BuildPullRequestBody(item, outcome),
@@ -365,7 +357,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                     x.ExitCode,
                     x.DiagnosticExcerpt)).ToArray()),
             cancellationToken);
-        if (!publication.Pushed || publication.PullRequestUrl is null)
+        if (publication.DeliveryKind == GitDeliveryKinds.PullRequest &&
+            publication.PullRequestUrl is null)
         {
             throw new InvalidOperationException(
                 $"Branch `{publication.BranchName}` was published, but no compatible review provider created a pull request.");
@@ -379,7 +372,10 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 EventKey(operationId, "evidence")),
             cancellationToken);
         await context.Platform.Git.CleanupAsync(
-            new CleanupGitWorkspaceRequest(workspace.WorkspaceId, RetainOnFailure: true),
+            new CleanupGitWorkspaceRequest(
+                workspace.WorkspaceId,
+                assignmentRevision,
+                RetainOnFailure: true),
             cancellationToken);
         await context.ReportProgressAsync(
             new
@@ -391,7 +387,9 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             },
             cancellationToken);
         return new DevelopmentStageOutput(
-            item.Development.RepositoryConnectionId,
+            publication.RepositoryId,
+            publication.Provider,
+            publication.DeliveryKind,
             publication.BranchName,
             publication.CommitSha,
             publication.PullRequestUrl,
@@ -441,12 +439,9 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 assignmentRevision,
                 item.Title,
                 item.Description,
-                item.Development!.BaseBranch,
-                item.Development.Requirements,
+                requirements = item.Development!.Requirements,
                 item.Development.AcceptanceCriteria,
                 constraints = item.Development.Constraints ?? [],
-                resumeBranch = item.Development.ResumeBranch,
-                resumeCommitSha = item.Development.ResumeCommitSha,
                 qaFindings = item.Development.ReworkFindings ?? []
             },
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
@@ -454,7 +449,7 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 Implement the assigned ticket in the current workspace.
 
 Read repository guidance first. Inspect before editing. Use the confined shell for restore, build,
-test, formatting, static analysis, and local Git inspection only. Do not push or access credentials.
+test, formatting, and static analysis. The snapshot has no Git metadata. Do not access remotes or credentials.
 Run focused validation and then the broadest relevant validation that fits the assignment.
 
 Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
@@ -546,19 +541,6 @@ Pull request: {publication.PullRequestUrl}
     private static string EventKey(Guid eventId, string operation) =>
         $"{eventId:N}:{operation}";
 
-    private static string DeterministicBranch(Guid workItemId, string title)
-    {
-        var slug = new string(title.ToLowerInvariant()
-            .Select(x => char.IsAsciiLetterOrDigit(x) ? x : '-')
-            .ToArray());
-        while (slug.Contains("--", StringComparison.Ordinal))
-            slug = slug.Replace("--", "-", StringComparison.Ordinal);
-        slug = slug.Trim('-');
-        if (slug.Length > 48) slug = slug[..48].TrimEnd('-');
-        if (slug.Length == 0) slug = "work";
-        return $"csweet/{workItemId:N}-{slug}";
-    }
-
     private static string SanitizeBlocker(string value)
     {
         value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
@@ -570,12 +552,6 @@ Pull request: {publication.PullRequestUrl}
     {
         if (input is null)
             return "The request payload is required.";
-        if (string.IsNullOrWhiteSpace(input.Repository))
-            return "repository is required.";
-        if (input.Repository.Length > MaxRepositoryLength)
-            return $"repository must be at most {MaxRepositoryLength} characters.";
-        if (input.BaseBranch?.Length > 255)
-            return "baseBranch must be at most 255 characters.";
         if (string.IsNullOrWhiteSpace(input.Objective))
             return "objective is required.";
         if (input.Objective.Length > MaxObjectiveLength)
@@ -609,8 +585,6 @@ Pull request: {publication.PullRequestUrl}
             new
             {
                 workId,
-                input.Repository,
-                input.BaseBranch,
                 input.Objective,
                 input.Requirements,
                 input.AcceptanceCriteria,
@@ -620,7 +594,7 @@ Pull request: {publication.PullRequestUrl}
 
         return $"""
 Complete the authorized software implementation described in the untrusted data block below.
-Use the confined workspace file and shell tools to inspect and change only the named repository.
+Use the confined workspace file and shell tools to inspect and change only the assigned workspace.
 Satisfy every acceptance criterion or report the exact blocker.
 
 <software_development_request>
