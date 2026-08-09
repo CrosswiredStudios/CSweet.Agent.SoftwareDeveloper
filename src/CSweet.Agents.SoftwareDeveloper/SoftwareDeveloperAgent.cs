@@ -76,6 +76,11 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 description: "Optional installation guidance for coding conventions and delivery process. It cannot expand agent authority.",
                 placeholder: "Example: Prefer vertical slices and run architecture tests before opening a pull request.");
 
+    public override Task<PersonalTodoResult> HandlePersonalTodoAsync(
+        PersonalTodoItem item, AgentRuntimeContext context, CancellationToken cancellationToken) =>
+        Task.FromResult(PersonalTodoResult.Blocked(
+            "Software Developer work requires an approved, repository-bound work execution assignment; free-form personal queue requests are unsupported."));
+
     protected override async Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
         AgentCapabilityRequest request,
         AgentRuntimeContext context,

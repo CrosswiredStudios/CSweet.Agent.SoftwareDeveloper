@@ -49,6 +49,14 @@ public sealed class ManifestTests
 
         Assert.Equal(
             [
+                PersonalTodoCapabilities.Read,
+                PersonalTodoCapabilities.Add,
+                PersonalTodoCapabilities.Reorder,
+                PersonalTodoCapabilities.Requeue,
+                PersonalTodoCapabilities.Claim,
+                PersonalTodoCapabilities.Complete,
+                PersonalTodoCapabilities.Block,
+                PersonalTodoCapabilities.Release,
                 SoftwareDeveloperProfile.TeamRosterCapability,
                 SoftwareDeveloperProfile.LlmCapability,
                 WorkItemCapabilities.Read,
@@ -68,7 +76,10 @@ public sealed class ManifestTests
             root.GetProperty("runtime").GetProperty("workspaceAccess").GetString());
         Assert.Equal("Allowlist", root.GetProperty("webAccess").GetProperty("mode").GetString());
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
-        Assert.Empty(root.GetProperty("events").GetProperty("subscribes").EnumerateArray());
+        Assert.Equal(
+            [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned],
+            root.GetProperty("events").GetProperty("subscribes")
+                .EnumerateArray().Select(item => item.GetString()!).ToArray());
     }
 
     [Fact]
