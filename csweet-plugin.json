@@ -4,7 +4,7 @@
   "kind": "agent",
   "id": "com.csweet.software-developer",
   "name": "C-Sweet Software Developer",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -13,7 +13,7 @@
     "type": "dotnet-project",
     "projectPath": "src/CSweet.Agents.SoftwareDeveloper/CSweet.Agents.SoftwareDeveloper.csproj",
     "targetFramework": "net10.0",
-    "defaultActivationMode": "Manual",
+    "defaultActivationMode": "OnDemand",
     "supportsMultipleInstallations": true,
     "maximumConcurrentJobs": 1,
     "environmentProfile": "software-development-polyglot-v1",

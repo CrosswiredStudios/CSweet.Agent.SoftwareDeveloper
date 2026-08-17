@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.3.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `0.5.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -113,4 +113,4 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.4.0 and `CSweet.WorkManagement.Contracts` 3.1.0.
+Built with `CSweet.Agent.SDK` 3.9.0 and `CSweet.WorkManagement.Contracts` 3.6.0.
