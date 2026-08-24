@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <Version>0.5.0</Version>
+    <Version>0.6.0</Version>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="CSweet.Agent.SDK" Version="3.9.0" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
-    <PackageReference Include="CSweet.WorkManagement.Contracts" Version="3.6.0" Condition="'$(UseLocalCSweetWorkManagementContracts)' != 'true'" />
+    <PackageReference Include="CSweet.Agent.SDK" Version="3.16.0" Condition="'$(UseLocalCSweetAgentSdk)' != 'true'" />
+    <PackageReference Include="CSweet.WorkManagement.Contracts" Version="3.9.0" Condition="'$(UseLocalCSweetWorkManagementContracts)' != 'true'" />
     <PackageReference Include="Microsoft.Agents.AI.Harness" Version="1.15.0" />
     <PackageReference Include="Microsoft.Agents.AI.Tools.Shell" Version="1.15.0-preview.260722.1" />
   </ItemGroup>
@@ -16,6 +17,7 @@
     <ProjectReference Include="$(CSweetAgentSdkRepositoryRoot)\src\CSweet.Agent.SDK\CSweet.Agent.SDK.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" />
     <Content Include="..\..\csweet-plugin.json"
              Link="csweet-plugin.json"
              CopyToOutputDirectory="PreserveNewest" />

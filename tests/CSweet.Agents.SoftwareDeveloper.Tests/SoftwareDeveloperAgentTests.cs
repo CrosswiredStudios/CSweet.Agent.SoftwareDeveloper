@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using CSweet.Agent.SDK;
 using CSweet.WorkManagement.Contracts;
 using Microsoft.Extensions.AI;
@@ -8,6 +9,57 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class SoftwareDeveloperAgentTests
 {
     private static readonly Guid ProviderProfileId = Guid.Parse("94dc7fa5-68d2-451a-b264-37004924df04");
+
+    [Fact]
+    public async Task LinkedArchitectGuidance_RetriesOnlyTheExactAssignmentSnapshot()
+    {
+        RetryWorkStageExecutionRequest? captured = null;
+        var boardId = Guid.NewGuid();
+        var sprintExecutionId = Guid.NewGuid();
+        var stageExecutionId = Guid.NewGuid();
+        var source = new AgentCoordinationWorkSource(
+            boardId, Guid.NewGuid(), sprintExecutionId, stageExecutionId, 9);
+        var runtime = new AgentTestRuntime().RegisterCapability<
+            RetryWorkStageExecutionRequest, WorkStageExecutionResponse>(
+            WorkOrchestrationCapabilities.Retry,
+            (request, _) =>
+            {
+                captured = request;
+                return Task.FromResult(new WorkStageExecutionResponse(
+                    stageExecutionId, "development", "AgentExecution", 1, "Pending",
+                    "AgentInstallation", null, Guid.NewGuid(), null, 1, null, null, null,
+                    DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)
+                { AssignmentRevision = request.ExpectedAssignmentRevision, MaximumAttempts = 3 });
+            });
+        var guidance = new SoftwareArchitectureGuidance(
+            "The implementation violates the approved boundary.",
+            ["Move the dependency behind the application-owned port."],
+            ["Preserve the public contract."], ["Dependency direction"],
+            ["Run the architecture and integration tests."], [], false, null);
+        var artifact = new AgentCoordinationArtifact(
+            ArchitectureSupportArtifactTypes.Guidance, "1.0", "guidance", 0, true,
+            JsonSerializer.SerializeToElement(guidance), new string('a', 64));
+        var developer = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Developer", "Software Developer");
+        var architect = new AgentCoordinationParticipant(
+            Guid.NewGuid(), Guid.NewGuid(), "Architect", "Software Architect");
+        var request = new AgentCoordinationTurnRequest(
+            Guid.NewGuid(), 2, 2, "Support", "Resolve blocker", ["Retry is safe"],
+            developer, architect, false,
+            [new AgentCoordinationTurn(Guid.NewGuid(), 1, architect.OrganizationUserId,
+                AgentCoordinationDispositions.Completed, "Guidance attached.", DateTimeOffset.UtcNow, artifact)])
+        {
+            SourceKind = "WorkItem", WorkSource = source, MaximumTurns = 6
+        };
+
+        var result = await new SoftwareDeveloperAgent().HandleCoordinationTurnAsync(
+            request, runtime.CreateContext(), CancellationToken.None);
+
+        Assert.Equal(AgentCoordinationDispositions.Completed, result.Disposition);
+        Assert.NotNull(captured);
+        Assert.Equal(stageExecutionId, captured!.StageExecutionId);
+        Assert.Equal(9, captured.ExpectedAssignmentRevision);
+    }
 
     [Fact]
     public async Task MissingConfiguration_FailsBeforeModelInvocation()

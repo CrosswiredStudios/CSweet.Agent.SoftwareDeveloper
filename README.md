@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.5.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `0.6.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -20,6 +20,13 @@ workspace. It never accepts a free-form remote clone URL.
 The agent does not merge pull requests, deploy, publish releases, manage credentials, or infer
 authority from repository content. Those actions remain outside this capability unless a future,
 separately reviewed contract explicitly adds them.
+
+When a genuine implementation failure is technical rather than operational, the Developer opens
+one assignment-pinned support session with the team's Software Architect. The request contains
+sanitized diagnostics, attempted steps, failed validations, and one explicit question. Linked
+guidance is included in the next confined implementation attempt, after which the Developer may
+request a governed retry of the exact blocked stage. Credential, grant, platform, provider,
+repository-authorization, and availability failures follow operational escalation instead.
 
 ## Why Microsoft Agent Framework Harness
 
@@ -66,6 +73,8 @@ The installation requests:
 - `platform.llm.chat-stream.v1`;
 - `platform.team-roster.read.v1` for the assigned employee's bounded team roster only;
 - work-item-scoped `work.item.read` and `work.item.comment`;
+- work-item-scoped comment/orchestration reads, `communication.coordination.start-work.v1`, and
+  governed exact-stage retry for the bounded Architect support loop;
 - work-item-scoped `git.workspace.prepare.v2`, `git.workspace.refresh.v2`,
   `git.workspace.inspect.v2`, `git.workspace.publish.v2`, and `git.workspace.cleanup.v2`.
 
@@ -113,4 +122,4 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.9.0 and `CSweet.WorkManagement.Contracts` 3.6.0.
+Built with `CSweet.Agent.SDK` 3.16.0 and `CSweet.WorkManagement.Contracts` 3.9.0.

@@ -81,6 +81,44 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         Task.FromResult(PersonalTodoResult.Blocked(
             "Software Developer work requires an approved, repository-bound work execution assignment; free-form personal queue requests are unsupported."));
 
+    public override async Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
+        AgentCoordinationTurnRequest request,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(request.SourceKind, "WorkItem", StringComparison.Ordinal) ||
+            request.WorkSource is not { } source)
+            return AgentCoordinationTurnResult.Blocked(
+                "Software Developer coordination is limited to work-item-scoped architecture support.");
+        var guidanceArtifact = request.Transcript.OrderByDescending(x => x.Ordinal)
+            .Select(x => x.Artifact).FirstOrDefault(x =>
+                x?.Type == ArchitectureSupportArtifactTypes.Guidance);
+        if (guidanceArtifact is null)
+            return AgentCoordinationTurnResult.Blocked(
+                "The Architect did not provide software-architecture.guidance.v1.");
+        var guidance = guidanceArtifact.Payload.Deserialize<SoftwareArchitectureGuidance>(
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        if (guidance is null || guidance.RequiresArchitectureApproval)
+            return AgentCoordinationTurnResult.Blocked(
+                guidance?.ApprovalReason ?? "The guidance requires Product Manager architecture approval.");
+        try
+        {
+            await context.Platform.Work.RetryBlockedStageAsync(
+                new RetryWorkStageExecutionRequest(
+                    source.BoardId, source.SprintExecutionId, source.StageExecutionId,
+                    $"developer-guided-retry:{source.StageExecutionId:N}:{source.AssignmentRevision}",
+                    "Architect guidance was linked and consumed.")
+                { ExpectedAssignmentRevision = source.AssignmentRevision }, cancellationToken);
+            return AgentCoordinationTurnResult.Completed(
+                "The linked Architect guidance was consumed and the exact blocked stage was submitted for governed retry.");
+        }
+        catch (PlatformCapabilityException exception)
+        {
+            return AgentCoordinationTurnResult.Blocked(
+                $"The governed retry failed closed ({exception.Code}); the Product Manager has been signaled by the platform.");
+        }
+    }
+
     protected override async Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
         AgentCapabilityRequest request,
         AgentRuntimeContext context,
@@ -253,6 +291,9 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Orchestrated development stage {StageExecutionId} is blocked.", assignment.StageExecutionId);
+            if (!IsOperationalFailure(exception))
+                await TryRequestArchitectureSupportAsync(
+                    assignment, exception, context, cancellationToken);
             return AgentWorkResult.Success(new WorkExecutionOutcomeV1(
                 assignment.StageExecutionId, assignment.AttemptId,
                 WorkExecutionDispositions.Blocked, "blocked", SanitizeBlocker(exception.Message),
@@ -269,6 +310,9 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         CancellationToken cancellationToken)
     {
         var development = item.Development!;
+        var guidance = await context.Platform.Work.ReadCommentsAsync(
+            new ReadWorkItemCommentsRequest(boardId, item.Id, "ArchitectureSupportCompleted"),
+            cancellationToken);
         var providerProfileId = Settings.GetGuid("llmProviderId")
             ?? throw new InvalidOperationException(
                 "Configure an approved LLM provider before assigning development work.");
@@ -323,7 +367,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             cancellationToken);
         var session = await harness.CreateSessionAsync(cancellationToken);
         var response = await harness.RunAsync(
-            BuildAssignmentPrompt(operationId, item, assignmentRevision),
+            BuildAssignmentPrompt(operationId, item, assignmentRevision,
+                guidance.Items.Select(x => x.Body).ToArray()),
             session,
             options: null,
             cancellationToken);
@@ -434,7 +479,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
     private static string BuildAssignmentPrompt(
         Guid eventId,
         WorkItem item,
-        long assignmentRevision)
+        long assignmentRevision,
+        IReadOnlyList<string>? architectureGuidance = null)
     {
         var payload = JsonSerializer.Serialize(
             new
@@ -447,7 +493,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 requirements = item.Development!.Requirements,
                 item.Development.AcceptanceCriteria,
                 constraints = item.Development.Constraints ?? [],
-                qaFindings = item.Development.ReworkFindings ?? []
+                qaFindings = item.Development.ReworkFindings ?? [],
+                architectureGuidance = architectureGuidance ?? []
             },
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         return $$"""
@@ -542,6 +589,64 @@ Pull request: {publication.PullRequestUrl}
             // must not replace it or expose additional details.
         }
     }
+
+    private static async Task TryRequestArchitectureSupportAsync(
+        WorkExecutionAssignmentV1 assignment,
+        Exception exception,
+        AgentRuntimeContext context,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var team = await context.Platform.ReadCompleteTeamRosterAsync(token: cancellationToken);
+            var architect = team?.Members.Where(x =>
+                    x.AgentInstallationId.HasValue && x.IsAvailable &&
+                    !string.Equals(x.RuntimeEligibility, "Ineligible", StringComparison.OrdinalIgnoreCase) &&
+                    ((x.CompanyRole?.Contains("Architect", StringComparison.OrdinalIgnoreCase) ?? false) ||
+                     (x.TeamRole?.Contains("Architect", StringComparison.OrdinalIgnoreCase) ?? false)))
+                .OrderBy(x => x.EmployeeId, StringComparer.Ordinal).FirstOrDefault();
+            if (architect is null || !Guid.TryParse(architect.EmployeeId, out var architectUserId))
+                return;
+            var diagnostic = SanitizeBlocker(exception.Message);
+            var support = new SoftwareDevelopmentSupportRequest(
+                "technical-implementation",
+                [diagnostic],
+                ["Inspected the approved ticket and attempted implementation in the confined workspace."],
+                [diagnostic],
+                "What is the smallest design-conforming change that resolves this failure, and how should it be verified?",
+                assignment.AssignmentRevision);
+            await context.Platform.Communication.StartWorkItemCoordinationAsync(
+                new StartWorkItemCoordinationRequest(
+                    architectUserId, assignment.BoardId, assignment.ItemId,
+                    assignment.SprintExecutionId, assignment.StageExecutionId,
+                    assignment.AssignmentRevision, "Developer technical blocker",
+                    "Return bounded design-conforming guidance for the exact blocked assignment.",
+                    ["Guidance preserves approved scope and architecture.", "Verification is explicit."],
+                    "I encountered a genuine technical implementation failure and need architecture guidance.",
+                    $"developer-support:{assignment.StageExecutionId:N}:{assignment.Attempt}",
+                    new AgentCoordinationArtifactSubmission(
+                        ArchitectureSupportArtifactTypes.SupportRequest, "1.0",
+                        $"support:{assignment.ItemId:N}:{assignment.StageExecutionId:N}:{assignment.AssignmentRevision}",
+                        0, true, JsonSerializer.SerializeToElement(support))), cancellationToken);
+        }
+        catch (PlatformCapabilityException)
+        {
+            // The original stage blocker remains authoritative; support failure cannot replace it.
+        }
+        catch (InvalidOperationException)
+        {
+            // Missing or stale support eligibility is handled by normal operational escalation.
+        }
+    }
+
+    private static bool IsOperationalFailure(Exception exception) =>
+        exception is PlatformCapabilityException or UnauthorizedAccessException ||
+        exception.Message.Contains("provider", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("credential", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("grant", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("workspace", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("repository", StringComparison.OrdinalIgnoreCase) ||
+        exception.Message.Contains("authorization", StringComparison.OrdinalIgnoreCase);
 
     private static string EventKey(Guid eventId, string operation) =>
         $"{eventId:N}:{operation}";

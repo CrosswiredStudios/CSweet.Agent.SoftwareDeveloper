@@ -2,9 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/CrosswiredStudios/CSweetAgentSdk/main/schemas/csweet-plugin.v2.schema.json",
   "manifestVersion": "2.0",
   "kind": "agent",
+  "rolePolicy": {
+    "profile": "individual-contributor.v1",
+    "declaredRoleKeys": ["software-developer"]
+  },
   "id": "com.csweet.software-developer",
   "name": "C-Sweet Software Developer",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -280,6 +284,39 @@
       "purpose": "Attach bounded validation evidence or a sanitized blocker to the assigned ticket"
     },
     {
+      "name": "work.item.comments.read",
+      "scope": "work-item",
+      "purpose": "Read Architect guidance linked to the exact assigned ticket"
+    },
+    {
+      "name": "work.orchestration.read",
+      "scope": "work-item",
+      "purpose": "Read the exact assigned stage execution state"
+    },
+    {
+      "name": "work.orchestration.retry",
+      "scope": "work-item",
+      "purpose": "Request a governed retry after consuming linked Architect guidance",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.coordination.start-work.v1",
+      "scope": "team",
+      "purpose": "Request bounded technical support from the team Architect",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.coordination.respond.v1",
+      "scope": "team",
+      "purpose": "Finalize work-item support after guidance and governed retry",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.coordination.read.v1",
+      "scope": "team",
+      "purpose": "Read only support sessions in which this Developer participates"
+    },
+    {
       "name": "git.workspace.prepare.v2",
       "scope": "work-item",
       "purpose": "Clone or resume the ticket's installation-granted repository workspace"
@@ -305,7 +342,7 @@
       "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
     }
   ],
-  "events": { "subscribes": ["com.csweet.work.personal-todo.available.v1", "com.csweet.communication.message.mentioned.v1"] },
+  "events": { "subscribes": ["com.csweet.work.personal-todo.available.v1", "com.csweet.communication.message.mentioned.v1", "com.csweet.agent.coordination.turn-requested.v1"] },
   "configuration": [
     {
       "key": "llmProviderId",

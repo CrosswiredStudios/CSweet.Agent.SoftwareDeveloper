@@ -22,6 +22,8 @@ public sealed class ManifestTests
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
+        Assert.Equal("individual-contributor.v1",
+            document.RootElement.GetProperty("rolePolicy").GetProperty("profile").GetString());
         var configuration = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
         Assert.Equal(
             SoftwareDeveloperHarness.MaxContextWindowTokens,
@@ -61,6 +63,12 @@ public sealed class ManifestTests
                 SoftwareDeveloperProfile.LlmCapability,
                 WorkItemCapabilities.Read,
                 WorkItemCapabilities.Comment,
+                WorkItemCapabilities.ReadComments,
+                WorkOrchestrationCapabilities.Read,
+                WorkOrchestrationCapabilities.Retry,
+                CommunicationCapabilities.CoordinationStartWork,
+                CommunicationCapabilities.CoordinationRespond,
+                CommunicationCapabilities.CoordinationRead,
                 GitWorkspaceCapabilities.Prepare,
                 GitWorkspaceCapabilities.Refresh,
                 GitWorkspaceCapabilities.Inspect,
@@ -77,7 +85,8 @@ public sealed class ManifestTests
         Assert.Equal("Allowlist", root.GetProperty("webAccess").GetProperty("mode").GetString());
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
         Assert.Equal(
-            [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned],
+            [PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
+                AgentCoordinationEvents.TurnRequested],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(item => item.GetString()!).ToArray());
     }
