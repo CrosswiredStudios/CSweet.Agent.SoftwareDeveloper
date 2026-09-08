@@ -4,7 +4,7 @@ public static class SoftwareDeveloperProfile
 {
     public const string AgentId = "com.csweet.software-developer";
     public const string Version = "0.6.0";
-    public const string DisplayName = "C-Sweet Software Developer";
+    public const string DisplayName = "Daniel Kim";
     public const string PrimaryCapability = "software-development.implement.v1";
     public const string LlmCapability = "platform.llm.chat-stream.v1";
     public const string TeamRosterCapability = "platform.team-roster.read.v1";

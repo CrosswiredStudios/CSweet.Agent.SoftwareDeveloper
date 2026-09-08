@@ -7,7 +7,7 @@
     "declaredRoleKeys": ["software-developer"]
   },
   "id": "com.csweet.software-developer",
-  "name": "C-Sweet Software Developer",
+  "name": "Daniel Kim",
   "version": "0.6.0",
   "publisher": {
     "id": "com.csweet",
@@ -434,6 +434,9 @@
     }
   ],
   "catalog": {
+    "imageUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.SoftwareDeveloper/main/assets/branding/portrait-v1.jpg",
+    "companyLogoUrl": "https://raw.githubusercontent.com/CrosswiredStudios/CSweet.Agent.SoftwareDeveloper/main/assets/branding/csweet-icon.svg",
+    "accentColor": "#356286",
     "summary": "Implements production software from approved requirements while keeping changes reviewable, tested, and aligned with the product plan.",
     "category": "Engineering",
     "role": { "key": "software-developer", "name": "Software Developer" },
