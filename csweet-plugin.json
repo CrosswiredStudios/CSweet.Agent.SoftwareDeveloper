@@ -8,7 +8,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -255,6 +255,11 @@
     }
   ],
   "requires": [
+    {"name": "work.calendar.read.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
+    {"name": "work.calendar.create.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
+    {"name": "work.calendar.update.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
+    {"name": "work.calendar.cancel.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
+    {"name": "work.calendar.schedule.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
     { "name": "work.personal-todo.read.v1", "scope": "organization", "purpose": "Read resource-scoped personal queues" },
     { "name": "work.personal-todo.add.v1", "scope": "organization", "purpose": "Add self or direct-report personal work" },
     { "name": "work.personal-todo.reorder.v1", "scope": "organization", "purpose": "Reorder directly managed personal work" },
@@ -342,7 +347,7 @@
       "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
     }
   ],
-  "events": { "subscribes": ["com.csweet.work.personal-todo.available.v1", "com.csweet.communication.message.mentioned.v1", "com.csweet.agent.coordination.turn-requested.v1"] },
+  "events": { "subscribes": ["com.csweet.calendar.reminder-due.v1", "com.csweet.work.personal-todo.available.v1", "com.csweet.communication.message.mentioned.v1", "com.csweet.agent.coordination.turn-requested.v1"] },
   "configuration": [
     {
       "key": "llmProviderId",

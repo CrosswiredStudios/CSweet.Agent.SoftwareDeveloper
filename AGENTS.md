@@ -6,7 +6,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-developer` and version `0.6.0` synchronized between agent code,
+- Keep `com.csweet.software-developer` and version `0.7.0` synchronized between agent code,
   `csweet-plugin.json`, tests, and releases.
 - The root manifest is the reviewed authority request. Keep `provides`, `requires`, events,
   configuration, credentials, web access, and UI contributions synchronized with implementation
@@ -41,3 +41,10 @@ dotnet run --project src/CSweet.Agents.SoftwareDeveloper -- --self-test
 
 Any new capability, grant, event, configuration field, credential, or network rule requires a
 manifest update, a README explanation, and tests.
+
+## Release-note ordering
+
+- Bump the agent version FIRST, synchronizing the root `csweet-plugin.json`, implementation identity, project/package version, and version assertions as required by this repository.
+- Only AFTER the version bump, read the final `version` back from `csweet-plugin.json` and write `releases/<version>.md` for that exact version (no `v` prefix). Never write the new release's notes under the previous version.
+- If the version changes again during the task, retarget the unpublished notes to the final version. Preserve already published historical notes.
+- Before handoff or publishing, verify that the manifest, implementation/package version, release-note filename, and release-note heading all match. A version bump is incomplete without its matching release notes.

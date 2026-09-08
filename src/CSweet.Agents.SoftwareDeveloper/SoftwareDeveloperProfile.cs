@@ -3,7 +3,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 public static class SoftwareDeveloperProfile
 {
     public const string AgentId = "com.csweet.software-developer";
-    public const string Version = "0.6.0";
+    public const string Version = "0.7.0";
     public const string DisplayName = "Daniel Kim";
     public const string PrimaryCapability = "software-development.implement.v1";
     public const string LlmCapability = "platform.llm.chat-stream.v1";

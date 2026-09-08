@@ -188,14 +188,14 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 ? context.CreateChatClient(selection)
                 : await _llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
 
-            AIAgent harness = chatClient.AsHarnessAgent(
+            AIAgent harness = chatClient.AsHarnessAgent(await CalendarHarness.ConfigureAsync(context, 
                 SoftwareDeveloperHarness.CreateOptions(
                     context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                     workspacePath,
                     shell,
                     Settings.GetString("customInstructions"),
                     maxContextWindowTokens,
-                    maxOutputTokens));
+                    maxOutputTokens), cancellationToken));
 
             await context.ReportProgressAsync(
                 new
@@ -353,14 +353,14 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
             ? context.CreateChatClient(selection)
             : await _llmClientFactory.CreateChatClientAsync(selection, cancellationToken);
         await using var shell = SoftwareDeveloperHarness.CreateShell(workspacePath);
-        AIAgent harness = chatClient.AsHarnessAgent(
+        AIAgent harness = chatClient.AsHarnessAgent(await CalendarHarness.ConfigureAsync(context, 
             SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,
                 shell,
                 Settings.GetString("customInstructions"),
                 maxContextWindowTokens,
-                maxOutputTokens));
+                maxOutputTokens), cancellationToken));
 
         await context.ReportProgressAsync(
             new { stage = "implementing", itemId = item.Id, workspace = workspace.WorkspaceId },

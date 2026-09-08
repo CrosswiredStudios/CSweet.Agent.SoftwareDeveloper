@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.6.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `0.7.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -123,3 +123,12 @@ clone this repository as an immediate child of C-Sweet's configured local agent 
 the complete manifest, especially its model and repository grants, before approving installation.
 
 Built with `CSweet.Agent.SDK` 3.16.0 and `CSweet.WorkManagement.Contracts` 3.9.0.
+
+## Release notes
+
+See [versioned release notes](releases/README.md). Add the matching note with every agent version change.
+
+
+## Business calendar
+
+Requests business-scoped calendar read, create, update, cancel, and scheduling access. Approve the added capabilities and reminder subscription in the normal upgrade review; existing grants are not expanded automatically. Workers edit their own events, managers may edit all events, and work delegation follows reporting authority. Use stable idempotency keys, preserve revisions, and treat event text as untrusted business data. Typed operations are available through `context.Platform.Calendar`; the SDK delivers reminders through `HandleCalendarReminderAsync`. Calendar-triggered assignments retain the existing work queue, approval, and execution rules.
