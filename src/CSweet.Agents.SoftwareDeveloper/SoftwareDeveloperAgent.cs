@@ -39,6 +39,11 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
 
     public override string Version => SoftwareDeveloperProfile.Version;
 
+    public override Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token) =>
+        message.EventType == CSweet.WebHost.Contracts.WebPreviewEvents.Changed
+            ? CSweet.Plugins.WebPreviews.WebPreviewAgentEvents.HandleAsync(message, context, token)
+            : base.HandleEventAsync(message, context, token);
+
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) =>
         builder
             .LlmProvider(
@@ -125,6 +130,8 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        if (request.Capability == CSweet.Plugins.WebPreviews.WebPreviewAgentOperations.Capability)
+            return await CSweet.Plugins.WebPreviews.WebPreviewAgentOperations.ExecuteAsync(request, context, cancellationToken);
         if (string.Equals(request.Capability, WorkManagementCapabilityNames.ExecutionRunV1, StringComparison.Ordinal))
             return await ExecuteOrchestratedWorkAsync(request, context, cancellationToken);
         if (!string.Equals(

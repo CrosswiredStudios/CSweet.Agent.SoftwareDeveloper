@@ -4,11 +4,13 @@
   "kind": "agent",
   "rolePolicy": {
     "profile": "individual-contributor.v1",
-    "declaredRoleKeys": ["software-developer"]
+    "declaredRoleKeys": [
+      "software-developer"
+    ]
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "0.7.0",
+  "version": "0.9.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -33,12 +35,30 @@
       "description": "Execute one pinned board workflow stage and return a structured outcome without mutating the card transition.",
       "inputSchema": {
         "type": "object",
-        "required": ["stageExecutionId", "attemptId", "boardId", "itemId", "stageKey", "instructions", "item", "input"],
+        "required": [
+          "stageExecutionId",
+          "attemptId",
+          "boardId",
+          "itemId",
+          "stageKey",
+          "instructions",
+          "item",
+          "input"
+        ],
         "additionalProperties": true
       },
       "outputSchema": {
         "type": "object",
-        "required": ["stageExecutionId", "attemptId", "disposition", "outcomeCode", "summary", "output", "evidence", "diagnostics"],
+        "required": [
+          "stageExecutionId",
+          "attemptId",
+          "disposition",
+          "outcomeCode",
+          "summary",
+          "output",
+          "evidence",
+          "diagnostics"
+        ],
         "additionalProperties": true
       },
       "executionTimeoutSeconds": 3600,
@@ -89,11 +109,17 @@
             }
           },
           "baseBranch": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "maxLength": 255
           },
           "constraints": {
-            "type": ["array", "null"],
+            "type": [
+              "array",
+              "null"
+            ],
             "maxItems": 100,
             "items": {
               "type": "string",
@@ -148,38 +174,97 @@
           "settings"
         ],
         "properties": {
-          "agentId": { "type": "string" },
-          "agentVersion": { "type": "string" },
-          "schemaVersion": { "type": "string" },
+          "agentId": {
+            "type": "string"
+          },
+          "agentVersion": {
+            "type": "string"
+          },
+          "schemaVersion": {
+            "type": "string"
+          },
           "fields": {
             "type": "array",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["key", "label", "type", "required"],
+              "required": [
+                "key",
+                "label",
+                "type",
+                "required"
+              ],
               "properties": {
-                "key": { "type": "string" },
-                "label": { "type": "string" },
-                "type": { "type": "string" },
-                "required": { "type": "boolean" },
-                "description": { "type": ["string", "null"] },
-                "placeholder": { "type": ["string", "null"] },
+                "key": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "placeholder": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "options": {
-                  "type": ["array", "null"],
+                  "type": [
+                    "array",
+                    "null"
+                  ],
                   "items": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["value", "label"],
+                    "required": [
+                      "value",
+                      "label"
+                    ],
                     "properties": {
-                      "value": { "type": "string" },
-                      "label": { "type": "string" }
+                      "value": {
+                        "type": "string"
+                      },
+                      "label": {
+                        "type": "string"
+                      }
                     }
                   }
                 },
-                "minimum": { "type": ["number", "null"] },
-                "maximum": { "type": ["number", "null"] },
-                "step": { "type": ["number", "null"] },
-                "dependsOnFieldKey": { "type": ["string", "null"] }
+                "minimum": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "maximum": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "step": {
+                  "type": [
+                    "number",
+                    "null"
+                  ]
+                },
+                "dependsOnFieldKey": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
               }
             }
           },
@@ -187,11 +272,21 @@
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "llmProviderId": { "type": "string" },
-              "llmModel": { "type": "string" },
-              "maxContextWindowTokens": { "type": "number" },
-              "maxOutputTokens": { "type": "number" },
-              "customInstructions": { "type": "string" }
+              "llmProviderId": {
+                "type": "string"
+              },
+              "llmModel": {
+                "type": "string"
+              },
+              "maxContextWindowTokens": {
+                "type": "number"
+              },
+              "maxOutputTokens": {
+                "type": "number"
+              },
+              "customInstructions": {
+                "type": "string"
+              }
             }
           }
         }
@@ -206,14 +301,20 @@
       "inputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["settings"],
+        "required": [
+          "settings"
+        ],
         "properties": {
           "settings": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "llmProviderId": { "type": "string" },
-              "llmModel": { "type": "string" },
+              "llmProviderId": {
+                "type": "string"
+              },
+              "llmModel": {
+                "type": "string"
+              },
               "maxContextWindowTokens": {
                 "type": "number",
                 "minimum": 16000,
@@ -224,7 +325,9 @@
                 "minimum": 1000,
                 "maximum": 200000
               },
-              "customInstructions": { "type": "string" }
+              "customInstructions": {
+                "type": "string"
+              }
             }
           }
         }
@@ -232,19 +335,39 @@
       "outputSchema": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["succeeded", "settings"],
+        "required": [
+          "succeeded",
+          "settings"
+        ],
         "properties": {
-          "succeeded": { "type": "boolean" },
-          "message": { "type": ["string", "null"] },
+          "succeeded": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "settings": {
             "type": "object",
             "additionalProperties": false,
             "properties": {
-              "llmProviderId": { "type": "string" },
-              "llmModel": { "type": "string" },
-              "maxContextWindowTokens": { "type": "number" },
-              "maxOutputTokens": { "type": "number" },
-              "customInstructions": { "type": "string" }
+              "llmProviderId": {
+                "type": "string"
+              },
+              "llmModel": {
+                "type": "string"
+              },
+              "maxContextWindowTokens": {
+                "type": "number"
+              },
+              "maxOutputTokens": {
+                "type": "number"
+              },
+              "customInstructions": {
+                "type": "string"
+              }
             }
           }
         }
@@ -252,22 +375,114 @@
       "executionTimeoutSeconds": 30,
       "idempotency": "work-item",
       "riskClass": "standard"
+    },
+    {
+      "name": "web-preview.manage.v1",
+      "executionTimeoutSeconds": 120,
+      "idempotency": "work-item",
+      "outputSchema": {
+        "type": "object",
+        "additionalProperties": true
+      },
+      "description": "Manage a private product build/preview, request its owner grant, run browser checks and read diagnostics through typed platform callbacks. This is separate from implementation work.",
+      "riskClass": "elevated",
+      "inputSchema": {
+        "properties": {
+          "request": {
+            "type": "object"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "grant",
+              "preflight",
+              "build",
+              "build-status",
+              "start",
+              "read",
+              "stop",
+              "renew",
+              "test",
+              "diagnostics",
+              "list"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "action",
+          "request"
+        ],
+        "additionalProperties": false
+      }
     }
   ],
   "requires": [
-    {"name": "work.calendar.read.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
-    {"name": "work.calendar.create.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
-    {"name": "work.calendar.update.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
-    {"name": "work.calendar.cancel.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
-    {"name": "work.calendar.schedule.v1", "scope": "organization", "purpose": "Operate the business calendar within event ownership and reporting authority."},
-    { "name": "work.personal-todo.read.v1", "scope": "organization", "purpose": "Read resource-scoped personal queues" },
-    { "name": "work.personal-todo.add.v1", "scope": "organization", "purpose": "Add self or direct-report personal work" },
-    { "name": "work.personal-todo.reorder.v1", "scope": "organization", "purpose": "Reorder directly managed personal work" },
-    { "name": "work.personal-todo.requeue.v1", "scope": "organization", "purpose": "Requeue blocked personal work" },
-    { "name": "work.personal-todo.claim.v1", "scope": "organization", "purpose": "SDK-managed atomic personal work claims" },
-    { "name": "work.personal-todo.complete.v1", "scope": "organization", "purpose": "SDK-managed personal work completion" },
-    { "name": "work.personal-todo.block.v1", "scope": "organization", "purpose": "SDK-managed durable personal work blocking" },
-    { "name": "work.personal-todo.release.v1", "scope": "organization", "purpose": "SDK-managed personal work release" },
+    {
+      "name": "work.calendar.read.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.create.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.update.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.cancel.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.calendar.schedule.v1",
+      "scope": "organization",
+      "purpose": "Operate the business calendar within event ownership and reporting authority."
+    },
+    {
+      "name": "work.personal-todo.read.v1",
+      "scope": "organization",
+      "purpose": "Read resource-scoped personal queues"
+    },
+    {
+      "name": "work.personal-todo.add.v1",
+      "scope": "organization",
+      "purpose": "Add self or direct-report personal work"
+    },
+    {
+      "name": "work.personal-todo.reorder.v1",
+      "scope": "organization",
+      "purpose": "Reorder directly managed personal work"
+    },
+    {
+      "name": "work.personal-todo.requeue.v1",
+      "scope": "organization",
+      "purpose": "Requeue blocked personal work"
+    },
+    {
+      "name": "work.personal-todo.claim.v1",
+      "scope": "organization",
+      "purpose": "SDK-managed atomic personal work claims"
+    },
+    {
+      "name": "work.personal-todo.complete.v1",
+      "scope": "organization",
+      "purpose": "SDK-managed personal work completion"
+    },
+    {
+      "name": "work.personal-todo.block.v1",
+      "scope": "organization",
+      "purpose": "SDK-managed durable personal work blocking"
+    },
+    {
+      "name": "work.personal-todo.release.v1",
+      "scope": "organization",
+      "purpose": "SDK-managed personal work release"
+    },
     {
       "name": "platform.team-roster.read.v1",
       "scope": "team",
@@ -345,9 +560,65 @@
       "name": "git.workspace.cleanup.v2",
       "scope": "work-item",
       "purpose": "Remove successful workspaces and retain failed workspaces for recovery"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.grant.request.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.preflight.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.build.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.start.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.read.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.stop.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.renew.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.test.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "web-preview.diagnostics.read.v1"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "platform.build.request.v2"
+    },
+    {
+      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
+      "name": "platform.build.read.v2"
+    },
+    {
+      "name": "web-preview.list.v1",
+      "reason": "Recover current private preview state after waking or missing lifecycle events."
     }
   ],
-  "events": { "subscribes": ["com.csweet.calendar.reminder-due.v1", "com.csweet.work.personal-todo.available.v1", "com.csweet.communication.message.mentioned.v1", "com.csweet.agent.coordination.turn-requested.v1"] },
+  "events": {
+    "subscribes": [
+      "com.csweet.calendar.reminder-due.v1",
+      "com.csweet.work.personal-todo.available.v1",
+      "com.csweet.communication.message.mentioned.v1",
+      "com.csweet.agent.coordination.turn-requested.v1",
+      "com.csweet.web-preview.changed.v1"
+    ]
+  },
   "configuration": [
     {
       "key": "llmProviderId",
@@ -396,7 +667,9 @@
         "host": "api.nuget.org",
         "port": 443,
         "pathPrefix": "/",
-        "methods": ["GET"],
+        "methods": [
+          "GET"
+        ],
         "protocol": "http",
         "purpose": "Restore approved public NuGet packages"
       },
@@ -405,7 +678,9 @@
         "host": "registry.npmjs.org",
         "port": 443,
         "pathPrefix": "/",
-        "methods": ["GET"],
+        "methods": [
+          "GET"
+        ],
         "protocol": "http",
         "purpose": "Restore approved public npm packages"
       },
@@ -414,7 +689,9 @@
         "host": "pypi.org",
         "port": 443,
         "pathPrefix": "/",
-        "methods": ["GET"],
+        "methods": [
+          "GET"
+        ],
         "protocol": "http",
         "purpose": "Resolve approved public Python packages"
       },
@@ -423,7 +700,9 @@
         "host": "files.pythonhosted.org",
         "port": 443,
         "pathPrefix": "/",
-        "methods": ["GET"],
+        "methods": [
+          "GET"
+        ],
         "protocol": "http",
         "purpose": "Download approved public Python packages"
       }
@@ -444,8 +723,13 @@
     "accentColor": "#356286",
     "summary": "Implements production software from approved requirements while keeping changes reviewable, tested, and aligned with the product plan.",
     "category": "Engineering",
-    "role": { "key": "software-developer", "name": "Software Developer" },
-    "license": { "spdxId": "LicenseRef-Proprietary" },
+    "role": {
+      "key": "software-developer",
+      "name": "Software Developer"
+    },
+    "license": {
+      "spdxId": "LicenseRef-Proprietary"
+    },
     "iconUrls": [],
     "roleAliases": [
       "Software Developer",

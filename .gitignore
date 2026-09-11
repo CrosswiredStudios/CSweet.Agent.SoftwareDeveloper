@@ -408,3 +408,8 @@ FodyWeavers.xsd
 **/*.gguf
 **/*.bin
 **/*.safetensors
+
+# Versioned release notes
+!/releases/
+/releases/*
+!/releases/*.md

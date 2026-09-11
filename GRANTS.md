@@ -44,8 +44,10 @@ is configured. GitHub is the initial automated pull-request provider.
 
 ## Intentionally absent
 
-This version requests no memory, generic planning chat, secret-read, deployment, release, merge,
+The implementation harness requests no memory, generic planning chat, secret-read, deployment, release, merge,
 repository administration, access-control, protected-branch write, or organization-management
 authority. Its communication authority is confined to linked work-item support with the assigned
 team Architect. Its local file and shell access exists only inside the approved developer runtime
 and assignment workspace.
+
+The separate web-preview.manage.v1 callback requests scoped private preview lifecycle, browser testing and certified build capabilities. Installing or upgrading the agent does not activate hosting: owners must review the new declarations and approve the project hosting grant. Public/production deployment remains unsupported.

@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.7.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `0.9.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -132,3 +132,9 @@ See [versioned release notes](releases/README.md). Add the matching note with ev
 ## Business calendar
 
 Requests business-scoped calendar read, create, update, cancel, and scheduling access. Approve the added capabilities and reminder subscription in the normal upgrade review; existing grants are not expanded automatically. Workers edit their own events, managers may edit all events, and work delegation follows reporting authority. Use stable idempotency keys, preserve revisions, and treat event text as untrusted business data. Typed operations are available through `context.Platform.Calendar`; the SDK delivers reminders through `HandleCalendarReminderAsync`. Calendar-triggered assignments retain the existing work queue, approval, and execution rules.
+
+## Private preview work
+
+The web-preview.manage.v1 callback accepts an action and typed request object. Actions are grant, preflight, build, build-status, start, read, stop, renew, test and diagnostics. This separate capability keeps product hosting out of the implementation shell. Installation upgrade review, ordinary build permission, the optional plugin and an owner-approved project hosting grant are required. Use stable keys for mutations; repeat a test request to read its result. Renewal requests specify total lifetime since initial creation. Clone CSweet.Plugins.WebPreviews beside this repository for local development; no NuGet publication is required.
+
+The agent subscribes to com.csweet.web-preview.changed.v1 and refreshes authorized current state before reporting progress. Delayed or duplicate wakes never supply an old access link or authorize execution. The list action uses web-preview.list.v1 to recover all owned previews in an assigned project after missed events; read each recovered preview for current lifecycle and test runs. Upgrade review must approve the new subscription and list capability.
