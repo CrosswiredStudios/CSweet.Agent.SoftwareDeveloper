@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.3.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.3.1`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -137,7 +137,7 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Linux Hello World test instance (1.3.0)
+## Linux Hello World test instance (1.3.1)
 
 Ask Daniel: "Please create a Hello World application and provide a link to its running test instance."
 The standalone MVP uses Python 3 inside an ephemeral Ubuntu VM; repository implementation workflows retain their existing authority and behavior.
@@ -147,3 +147,5 @@ C-Sweet automatically prepares the Linux image, enrolls the local compute servic
 The request is retained in Daniel's personal queue; compute events advance it, with a five-minute scheduled recovery deadline for missed events. The response contains a health-checked `http://127.0.0.1:<port>/` URL for use on the compute host machine and its expiry. Each browser connection rechecks current networking grants through the broker. It is not an internet link. Provider shutdown closes publications; explicit stop/destroy closes them immediately. An uncertain command or publication result produces a blocker, never a fabricated link.
 
 The chat and compute callbacks use the typed `context.Platform.Compute` client from SDK 3.42.0. They cannot read host files, operate Hyper-V or Docker, or access provider credentials. `software-development.implement.v1` does not gain production deployment authority. SDK defaults report preparation state; the availability event wakes retained requests after setup. Only approved capabilities receive scoped grants, and revoked grants are never revived by setup.
+
+Compute wake events requeue only the owning agent's correlated Running task with a recorded wait. The SDK then claims and advances that task, persisting its result. Event handlers do not run the workflow outside a queue claim. Duplicate hints after requeue are ignored; the five-minute deadline remains a recovery mechanism.

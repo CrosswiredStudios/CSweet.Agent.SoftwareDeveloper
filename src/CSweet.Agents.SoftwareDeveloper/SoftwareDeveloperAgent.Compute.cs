@@ -20,8 +20,8 @@ public sealed partial class SoftwareDeveloperAgent
         {
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
-                         .SelectMany(b => b.Items).Where(x => x.Title == DemoTitle && x.ArchivedAt is null && x.Status is "Ready" or "InProgress").Take(10))
-                await AdvanceDemoAsync(item, context, token);
+                         .SelectMany(b => b.Items).Where(x => x.Title == DemoTitle && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
+                await WakeDemoAsync(item, context, token);
             return;
         }
         if (message.EventType == ComputeEvents.Changed)
@@ -33,8 +33,8 @@ public sealed partial class SoftwareDeveloperAgent
             // Wake hints are not snapshots or grants. Re-read both the environment and current queue.
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             var item = directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
-                .SelectMany(b => b.Items).SingleOrDefault(x => x.Id == itemId && x.ArchivedAt is null && x.Status is "Ready" or "InProgress");
-            if (item is not null) await AdvanceDemoAsync(item, context, token);
+                .SelectMany(b => b.Items).SingleOrDefault(x => x.Id == itemId && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null);
+            if (item is not null) await WakeDemoAsync(item, context, token);
             return;
         }
 
@@ -96,6 +96,9 @@ public sealed partial class SoftwareDeveloperAgent
         return await AdvanceDemoAsync(item, context, token);
     }
 
+    private static Task<PersonalTodoItem> WakeDemoAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken token) =>
+        context.Platform.PersonalTodo.RequeueAsync(new(item.Id, item.Revision,
+            $"{DemoMarker}:{item.Id:N}:wake:{item.Revision}"), token);
     private async Task<PersonalTodoResult> AdvanceDemoAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken token)
     {
         try
