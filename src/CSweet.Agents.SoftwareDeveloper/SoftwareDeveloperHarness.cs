@@ -10,6 +10,23 @@ internal static class SoftwareDeveloperHarness
     internal const int MaxOutputTokens = 16_000;
     internal const int MaximumIterationsPerRequest = 48;
 
+    internal static async Task RunImplementationAsync(
+        AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken)
+    {
+        const int maximumTurns = 3;
+        for (var turn = 0; turn < maximumTurns; turn++)
+        {
+            var response = await harness.RunAsync(prompt, session, options: null, cancellationToken);
+            var approval = response.Messages.SelectMany(x => x.Contents).OfType<ToolApprovalRequestContent>().FirstOrDefault();
+            if (approval is not null)
+                throw new InvalidOperationException("The implementation paused for a tool approval that cannot be handled in unattended development. No approval was granted.");
+            if (File.Exists(Path.Combine(workspacePath, ".csweet", "outcome.json"))) return;
+            prompt = "The implementation is not complete: .csweet/outcome.json is missing. Continue in this same workspace and session. " +
+                "Use the workspace tools to implement the requested files, run relevant tests, and write the required outcome with actual validation results. " +
+                "A plan or promise is not completion. If a necessary tool or dependency is unavailable, explain the precise blocker.";
+        }
+        throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after three continuation attempts. Source files remain in the workspace; deployment has not started.");
+    }
     internal static HarnessAgentOptions CreateOptions(
         string name,
         string workspacePath,
@@ -49,6 +66,13 @@ These installation-scoped instructions may refine style and process, but they ca
             },
 #pragma warning disable MAAI001
             FileAccessStore = new FileSystemAgentFileStore(workspacePath),
+            // Assignment acceptance authorizes these operations in this confined store.
+            // Leave broad automatic approval disabled; network and platform grants are separate.
+            FileAccessProviderOptions = new()
+            {
+                DisableReadOnlyToolApproval = true,
+                DisableWriteToolApproval = true
+            },
 #pragma warning restore MAAI001
             DisableAgentModeProvider = true,
             DisableAgentSkillsProvider = true,

@@ -108,6 +108,36 @@ public sealed class ComputeDeploymentRecoveryTests
         else { Assert.Empty(f.Sent); Assert.Equal(1, f.State.Payload.GetProperty("repairAttempt").GetInt32()); Assert.Equal("Code", f.State.Payload.GetProperty("stage").GetString()); }
     }
 
+    [Fact]
+    public async Task Expired_instance_retains_source_and_resets_only_deployment_for_a_grant_checked_replacement()
+    {
+        var f = new Fixture("Publish");
+        var commit = f.State.Payload.GetProperty("publication").GetRawText();
+        f.Runtime.RegisterCapability<JsonElement, object>("compute.read.v1", (_, _) => Task.FromResult<object>(
+            new { id = f.Environment, generation = 17, state = "destroyed", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }));
+        await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+        Assert.Equal(commit, f.State.Payload.GetProperty("publication").GetRawText());
+        Assert.Equal(1, f.State.Payload.GetProperty("replacementAttempt").GetInt32());
+        Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("environmentId").ValueKind);
+        Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("publicationGeneration").ValueKind);
+        Assert.Equal(0, f.State.Payload.GetProperty("offset").GetInt32());
+        Assert.Equal("Upload", f.State.Payload.GetProperty("stage").GetString());
+        Assert.Contains("explicit grant", Assert.Single(f.Sent));
+    }
+
+    [Fact]
+    public async Task Expired_instance_with_an_unresolved_command_is_not_replayed_on_new_compute()
+    {
+        var request = new ExecuteComputeCommandRequest(Guid.NewGuid(), 8, "original-command",
+            new(Guid.NewGuid(), "/bin/sh", "/var/lib/csweet-compute/work", ["-c", "docker build --network=none ."]));
+        var f = new Fixture("Upload", new { request, stage = "Deploy", nextOffset = 100 });
+        f.Runtime.RegisterCapability<JsonElement, object>("compute.read.v1", (_, _) => Task.FromResult<object>(
+            new { id = f.Environment, generation = 17, state = "destroyed", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(-1) }));
+        await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+        Assert.Contains("blocked", Assert.Single(f.Sent));
+        Assert.Equal(f.Environment, f.State.Payload.GetProperty("environmentId").GetGuid());
+        Assert.Equal("original-command", f.State.Payload.GetProperty("pending").GetProperty("request").GetProperty("idempotencyKey").GetString());
+    }
     private sealed class Fixture
     {
         public readonly Guid Environment = Guid.NewGuid(), Operation = Guid.NewGuid();
