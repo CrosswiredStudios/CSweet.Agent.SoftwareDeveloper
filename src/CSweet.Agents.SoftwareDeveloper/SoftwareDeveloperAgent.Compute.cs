@@ -16,6 +16,14 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token)
     {
+        if (message.EventType == ComputeEvents.Available)
+        {
+            var directory = await context.Platform.PersonalTodo.ListAsync(token);
+            foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
+                         .SelectMany(b => b.Items).Where(x => x.Title == DemoTitle && x.ArchivedAt is null && x.Status is "Ready" or "InProgress").Take(10))
+                await AdvanceDemoAsync(item, context, token);
+            return;
+        }
         if (message.EventType == ComputeEvents.Changed)
         {
             var change = message.Data.Deserialize<ComputeChangedEvent>(SerializerOptions) ?? throw new JsonException("Compute event is missing.");
@@ -54,17 +62,9 @@ public sealed partial class SoftwareDeveloperAgent
                 await ReplyAsync("I can create a Linux Hello World test instance, or implement software through an assigned work item.", "hello-help");
             return;
         }
-        var workstream = Settings.GetGuid("computeWorkstreamId");
-        var template = Settings.GetString("computeTemplateId");
-        if (workstream is null || workstream == Guid.Empty || string.IsNullOrWhiteSpace(template))
-        {
-            await ReplyAsync(
-                "Linux application testing is not ready yet. C-Sweet still needs to finish preparing the test environment before I can create this app.",
-                "hello-setup");
-            return;
-        }
-        // Store the approved template/workstream with the durable task; later configuration edits cannot change this request.
-        var terms = JsonSerializer.Serialize(new DemoTerms(DemoMarker, workstream.Value, template), SerializerOptions);
+        // Retain the request even while C-Sweet is preparing its first Linux image/provider.
+        // The first provisioning attempt resolves the platform-owned defaults.
+        var terms = JsonSerializer.Serialize(new DemoTerms(DemoMarker, Guid.Empty, ""), SerializerOptions);
         await context.Platform.PersonalTodo.AddAsync(new(DemoTitle, terms, "Normal", null, $"hello-request:{messageId:N}",
             SourceConversationId: chatId, SourceMessageId: messageId), token);
         await ReplyAsync(
@@ -101,9 +101,17 @@ public sealed partial class SoftwareDeveloperAgent
         try
         {
             var terms = JsonSerializer.Deserialize<DemoTerms>(item.Description, SerializerOptions);
-            if (terms is null || terms.Kind != DemoMarker || terms.WorkstreamId == Guid.Empty || string.IsNullOrWhiteSpace(terms.TemplateId))
+            if (terms is null || terms.Kind != DemoMarker)
                 return PersonalTodoResult.Blocked("The test-instance request is missing its approved terms.");
             var prefix = $"{DemoMarker}:{item.Id:N}";
+            if (terms.WorkstreamId == Guid.Empty || string.IsNullOrWhiteSpace(terms.TemplateId))
+            {
+                var defaults = await context.Platform.Compute.GetDefaultsAsync(token);
+                if (defaults.State == "Failed") return await BlockAsync("C-Sweet could not finish preparing Linux compute. " + defaults.ErrorCode);
+                if (defaults is not { State: "Ready", WorkstreamId: { } workstreamId, TemplateId: { } templateId })
+                    return Wait("C-Sweet is preparing the Linux test environment; approve the Windows administrator prompt if one appears.");
+                terms = new(DemoMarker, workstreamId, templateId);
+            }
             var environment = await context.Platform.Compute.ProvisionAsync(new(
                 terms.WorkstreamId, prefix, prefix + ":provision",
                 new ComputeSpecification("linux", "x64", terms.TemplateId, new(1, 1024, 20480), 3600)), token);
@@ -142,7 +150,7 @@ public sealed partial class SoftwareDeveloperAgent
         }
         catch (PlatformCapabilityException error)
         {
-            var reason = $"Linux test-instance capability {error.Capability} is unavailable ({error.Code}). Check installation capabilities and scoped grants.";
+            var reason = $"Linux test-instance capability {error.Capability} is unavailable ({error.Code}). C-Sweet could not authorize this test environment.";
             if (item.SourceConversationId is { } chatId)
                 await context.Platform.Communication.SendMessageAsync(chatId, reason, $"{DemoMarker}:{item.Id:N}:authority-blocked", token);
             return PersonalTodoResult.Blocked(reason);

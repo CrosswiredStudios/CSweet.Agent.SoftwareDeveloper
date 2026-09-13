@@ -7,7 +7,7 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class ComputeChatTests
 {
     [Theory]
-    [InlineData(false, "Please create a Hello World application and provide a link to its running test instance.", "not ready yet")]
+    [InlineData(false, "Please create a Hello World application and provide a link to its running test instance.", "creating")]
     [InlineData(true, "Please create a Hello World application and provide a link to its running test instance.", "I’m creating")]
     [InlineData(false, "What can you do?", "I can create")]
     public async Task Direct_chat_commits_one_final_response_without_a_second_message(bool configured, string content, string expected)
@@ -35,7 +35,7 @@ public sealed class ComputeChatTests
         Assert.Contains(expected, final.GetProperty("delta").GetString());
         Assert.Equal(turnId, final.GetProperty("turnId").GetGuid());
         Assert.Equal(2, final.GetProperty("attempt").GetInt32());
-        Assert.Equal(configured ? 1 : 0, queued);
+        Assert.Equal(content.Contains("Hello World") ? 1 : 0, queued);
     }
 
     [Fact]
@@ -43,10 +43,11 @@ public sealed class ComputeChatTests
     {
         var chatId = Guid.NewGuid(); var messageId = Guid.NewGuid(); var sends = 0;
         var runtime = new AgentTestRuntime()
+            .RegisterCapability<JsonElement, object>(PersonalTodoCapabilities.Add, (_, _) => Task.FromResult<object>(new { id = Guid.NewGuid() }))
             .RegisterCapability<JsonElement, CommunicationMessages>(CommunicationCapabilities.ChatRead, (_, _) =>
                 Task.FromResult(new CommunicationMessages([new(messageId, 1, chatId, Guid.NewGuid(), "Matt", "Human", "Create a Hello World app and return a link", DateTimeOffset.UtcNow)])))
             .RegisterCapability<JsonElement, object>(CommunicationCapabilities.MessageSend, (request, _) => {
-                sends++; Assert.Equal($"hello-setup:{messageId:N}", request.GetProperty("idempotencyKey").GetString());
+                sends++; Assert.Equal($"hello-accepted:{messageId:N}", request.GetProperty("idempotencyKey").GetString());
                 return Task.FromResult<object>(new { id = Guid.NewGuid() });
             });
         await runtime.DeliverEventAsync(new SoftwareDeveloperAgent(), CommunicationEvents.MessageMentioned, new { chatId, messageId });

@@ -60,6 +60,30 @@ public sealed class ComputeDemoTests
         Assert.Single(sent); Assert.Contains("unknown", sent[0]); Assert.DoesNotContain("http://", sent[0]);
     }
 
+    [Fact]
+    public async Task Unconfigured_request_waits_and_then_uses_authoritative_defaults_without_user_configuration()
+    {
+        var item = Item() with { Description = JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DemoMarker, workstreamId = Guid.Empty, templateId = "" }) };
+        var ready = false; var requests = 0; var scope = Guid.NewGuid();
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<JsonElement, object>("compute.read.v1", (request, _) => {
+                Assert.True(request.GetProperty("defaults").GetBoolean());
+                return Task.FromResult<object>(new { state = ready ? "Ready" : "Running", workstreamId = ready ? scope : (Guid?)null, templateId = ready ? "linux-local-assigned" : null });
+            })
+            .RegisterCapability<JsonElement, object>("compute.provision.v1", (request, _) => {
+                requests++;
+                Assert.Equal(scope, request.GetProperty("workstreamId").GetGuid());
+                Assert.Equal("linux-local-assigned", request.GetProperty("specification").GetProperty("templateId").GetString());
+                return Task.FromResult<object>(new { id = Guid.NewGuid(), generation = 1, state = "provisioning", leaseExpiresAt = DateTimeOffset.UtcNow.AddHours(1) });
+            });
+        var agent = new SoftwareDeveloperAgent();
+        await agent.HandlePersonalTodoAsync(item, runtime.CreateContext(), default);
+        Assert.Equal(0, requests);
+
+        ready = true;
+        await agent.HandlePersonalTodoAsync(item, runtime.CreateContext(), default);
+        Assert.Equal(1, requests);
+    }
     private static PersonalTodoItem Item() => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "User",
         SoftwareDeveloperAgent.DemoTitle, JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DemoMarker, workstreamId = Guid.NewGuid(), templateId = "ubuntu-clean" }),
         "InProgress", "Normal", 0, 1, null, Guid.NewGuid(), Guid.NewGuid(), [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);

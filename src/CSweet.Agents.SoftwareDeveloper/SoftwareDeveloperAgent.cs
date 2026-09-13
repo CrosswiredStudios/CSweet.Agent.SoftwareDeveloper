@@ -70,8 +70,6 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 maximum: 200_000,
                 step: 1_000,
                 defaultValue: SoftwareDeveloperHarness.MaxOutputTokens)
-            .Text("computeWorkstreamId", "Test-instance workstream", description: "Workstream UUID for authorized Linux test instances.")
-            .Text("computeTemplateId", "Linux test template", description: "Approved Ubuntu template containing the compute guest runtime and Python 3.")
             .TextArea(
                 "customInstructions",
                 "Custom instructions",

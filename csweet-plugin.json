@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -603,7 +603,8 @@
       "com.csweet.communication.message.mentioned.v1",
       "com.csweet.agent.coordination.turn-requested.v1",
       "com.csweet.user.message.received.v1",
-      "com.csweet.compute.changed.v1"
+      "com.csweet.compute.changed.v1",
+      "com.csweet.compute.available.v1"
     ]
   },
   "configuration": [

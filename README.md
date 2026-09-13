@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.2.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.3.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -122,7 +122,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.41.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
+Built with `CSweet.Agent.SDK` 3.42.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
 
 ## Release notes
 
@@ -137,13 +137,13 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Linux Hello World test instance (1.2.1)
+## Linux Hello World test instance (1.3.0)
 
 Ask Daniel: "Please create a Hello World application and provide a link to its running test instance."
 The standalone MVP uses Python 3 inside an ephemeral Ubuntu VM; repository implementation workflows retain their existing authority and behavior.
 
-Application setup must assign `computeWorkstreamId` to a workstream Daniel belongs to and `computeTemplateId` to an approved Linux template containing the compute guest runtime and Python 3. It must obtain installation capability approval and create the scoped grants: `compute.provision.v1`, `compute.read.v1`, `compute.list.v1`, `compute.execute.v1`, `compute.stop.v1`, `compute.destroy.v1`, `network.inbound.v1`, and `network.publish-port.v1` for that workstream. Constraints must permit Linux/x64, the selected template, one CPU, 1024 MiB RAM, 20480 MiB disk, a 3600-second lifetime, and guest port 8080 for both network actions. No persistent storage or outbound network is needed.
+C-Sweet automatically prepares the Linux image, enrolls the local compute service, selects the workstream and template, and creates bounded grants from the installation's approved compute capabilities. Windows requests administrator approval when required. No scripts or technical configuration are required from the user. The ephemeral environment permits port 8080 and a one-hour lifetime, with no persistent storage or outbound network.
 
 The request is retained in Daniel's personal queue; compute events advance it, with a five-minute scheduled recovery deadline for missed events. The response contains a health-checked `http://127.0.0.1:<port>/` URL for use on the compute host machine and its expiry. Each browser connection rechecks current networking grants through the broker. It is not an internet link. Provider shutdown closes publications; explicit stop/destroy closes them immediately. An uncertain command or publication result produces a blocker, never a fabricated link.
 
-The chat and compute callbacks use the typed `context.Platform.Compute` client from SDK 3.41.0. They cannot read host files, operate Hyper-V or Docker, or access provider credentials. `software-development.implement.v1` does not gain production deployment authority. Automatic provider activation and agent configuration remain unfinished MVP work; installing the manifest alone does not prepare a VM or grant permissions. Users must never be asked to configure IDs or run setup scripts.
+The chat and compute callbacks use the typed `context.Platform.Compute` client from SDK 3.42.0. They cannot read host files, operate Hyper-V or Docker, or access provider credentials. `software-development.implement.v1` does not gain production deployment authority. SDK defaults report preparation state; the availability event wakes retained requests after setup. Only approved capabilities receive scoped grants, and revoked grants are never revived by setup.
