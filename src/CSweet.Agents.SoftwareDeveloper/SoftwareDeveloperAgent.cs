@@ -70,6 +70,12 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 maximum: 200_000,
                 step: 1_000,
                 defaultValue: SoftwareDeveloperHarness.MaxOutputTokens)
+            // Preserve settings already accepted by the published installation manifest.
+            // Compute placement and authorization still come from the platform broker.
+            .Text("computeWorkstreamId", "Test-instance workstream",
+                description: "Compatibility setting for existing installations. The platform manages compute placement.")
+            .Text("computeTemplateId", "Linux test template",
+                description: "Compatibility setting for existing installations. The platform selects the Linux template.")
             .TextArea(
                 "customInstructions",
                 "Custom instructions",

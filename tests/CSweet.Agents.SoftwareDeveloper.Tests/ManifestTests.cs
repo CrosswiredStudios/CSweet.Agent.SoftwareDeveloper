@@ -119,6 +119,34 @@ public sealed class ManifestTests
             Assert.DoesNotContain(value, source, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task ManifestConfiguration_IsAcceptedByRuntimeIncludingBlankOptionalComputeSettings()
+    {
+        using var document = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(RepositoryRoot(), "csweet-plugin.json")));
+        var declared = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
+        var agent = new SoftwareDeveloperAgent();
+        var runtime = new AgentTestRuntime();
+        var described = await runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Describe, new { });
+        Assert.True(described.Succeeded);
+        var actual = described.Value!.Value.GetProperty("fields").EnumerateArray().ToArray();
+        Assert.Equal(declared.Select(x => x.GetProperty("key").GetString()).Order(),
+            actual.Select(x => x.GetProperty("key").GetString()).Order());
+        foreach (var field in declared)
+        {
+            var key = field.GetProperty("key").GetString();
+            var runtimeField = actual.Single(x => x.GetProperty("key").GetString() == key);
+            var expectedType = field.GetProperty("type").GetString() switch { "provider" => "llmProvider", "model" => "llmModel", var type => type };
+            Assert.Equal(expectedType, runtimeField.GetProperty("type").GetString());
+            Assert.Equal(field.GetProperty("required").GetBoolean(), runtimeField.GetProperty("required").GetBoolean());
+        }
+        var settings = declared.ToDictionary(x => x.GetProperty("key").GetString()!, x =>
+            x.TryGetProperty("defaultValue", out var value) ? value.Clone() : JsonSerializer.SerializeToElement(""));
+        settings["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid());
+        settings["llmModel"] = JsonSerializer.SerializeToElement("test-coding-model");
+        var applied = await runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update, new { settings });
+        Assert.True(applied.Succeeded, applied.Error);
+    }
     private static string RepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

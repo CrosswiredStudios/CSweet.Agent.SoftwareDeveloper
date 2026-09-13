@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.4.5`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.4.6`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -60,6 +60,8 @@ Each installation must select:
 - `maxOutputTokens`: the selected model's maximum output size and compaction reserve;
 - `customInstructions` (optional): repository-independent style or delivery guidance that cannot
   expand authority.
+
+The optional `computeWorkstreamId` and `computeTemplateId` fields are retained for compatibility with saved installation settings, including empty values. C-Sweet supplies current compute defaults through its broker; these settings do not grant infrastructure or network access.
 
 The manifest provides `agent.configuration.describe.v1`,
 `agent.configuration.update.v1`, `software-development.implement.v1`, and
@@ -137,7 +139,7 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Direct development and Docker test instances (1.4.5)
+## Direct development and Docker test instances (1.4.6)
 
 Ask Daniel to build an application, for example: "Build a Tetris clone and deploy it. Create your own tickets."
 Without an explicit ticket preference, Daniel asks whether you will create tickets or he should create his own. The question and source request survive restarts and remain bound to the original sender. A manager-created assignment continues through the existing assigned-work flow.
@@ -156,7 +158,7 @@ The chat and personal-work callbacks use `context.Platform`, including SDK 3.44.
 
 Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.
 
-## Workspace transfer recovery (1.4.5)
+## Workspace transfer recovery (1.4.6)
 
 Uses SDK 3.44.3 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
 
