@@ -20,7 +20,7 @@ public sealed partial class SoftwareDeveloperAgent
         {
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
-                         .SelectMany(b => b.Items).Where(x => x.Title == DemoTitle && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
+                         .SelectMany(b => b.Items).Where(x => (x.Title == DemoTitle || IsDirectWork(x)) && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
                 await WakeDemoAsync(item, context, token);
             return;
         }
@@ -28,6 +28,13 @@ public sealed partial class SoftwareDeveloperAgent
         {
             var change = message.Data.Deserialize<ComputeChangedEvent>(SerializerOptions) ?? throw new JsonException("Compute event is missing.");
             var environment = await context.Platform.Compute.ReadAsync(change.EnvironmentId, token);
+            var directDirectory = await context.Platform.PersonalTodo.ListAsync(token);
+            foreach (var candidate in directDirectory.Boards.Where(b => b.OwnerOrganizationUserId == directDirectory.CurrentOrganizationUserId)
+                         .SelectMany(b => b.Items).Where(x => IsDirectWork(x) && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
+            {
+                var state = await context.Platform.ReadOperatingStateAsync<DeploymentState>($"development/task/{candidate.Id:N}", token);
+                if (state?.Payload.EnvironmentId == environment.Id) await WakeDemoAsync(candidate, context, token);
+            }
             if (environment.DesiredEnvironmentKey is not { } key || !key.StartsWith(DemoMarker + ":", StringComparison.Ordinal) ||
                 !Guid.TryParseExact(key[(DemoMarker.Length + 1)..], "N", out var itemId)) return;
             // Wake hints are not snapshots or grants. Re-read both the environment and current queue.
@@ -56,31 +63,7 @@ public sealed partial class SoftwareDeveloperAgent
         var chat = await context.Platform.Communication.ReadChatAsync(chatId, token);
         var source = chat.Messages.SingleOrDefault(x => x.Id == messageId && x.ChatId == chatId);
         if (source is null || source.SenderEmployeeType != "Human") return;
-        if (!IsHelloRequest(source.Content))
-        {
-            if (received is { TurnId: var turnId } && turnId != Guid.Empty)
-                await ReplyAsync("I can create a Linux Hello World test instance, or implement software through an assigned work item.", "hello-help");
-            return;
-        }
-        // Retain the request even while C-Sweet is preparing its first Linux image/provider.
-        // The first provisioning attempt resolves the platform-owned defaults.
-        var terms = JsonSerializer.Serialize(new DemoTerms(DemoMarker, Guid.Empty, ""), SerializerOptions);
-        await context.Platform.PersonalTodo.AddAsync(new(DemoTitle, terms, "Normal", null, $"hello-request:{messageId:N}",
-            SourceConversationId: chatId, SourceMessageId: messageId), token);
-        await ReplyAsync(
-            "I’m creating a Hello World app in an isolated Linux test instance. I’ll return the browser link after the app passes its health check. The link will work on the compute host machine and expire with the test instance.",
-            "hello-accepted");
-
-        async Task ReplyAsync(string content, string key)
-        {
-            if (received is { TurnId: var turnId } && turnId != Guid.Empty)
-            {
-                await using var stream = context.CreateTurnStream(received.ConversationId, turnId, received.Attempt);
-                await stream.CommitAsync(content, token);
-            }
-            else
-                await context.Platform.Communication.SendMessageAsync(chatId, content, $"{key}:{messageId:N}", token);
-        }
+        await HandleDirectWorkMessageAsync(chatId, source, chat.Messages, received, context, token);
     }
 
     internal static bool IsHelloRequest(string content) => content.Length <= 8000 &&
@@ -92,6 +75,7 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task<PersonalTodoResult> HandlePersonalTodoAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken token)
     {
+        if (IsDirectWork(item)) return await AdvanceDirectWorkAsync(item, context, token);
         if (item.Title != DemoTitle) return PersonalTodoResult.Blocked("Repository implementation requires an approved work assignment. Standalone compute currently supports the Hello World test-instance request.");
         return await AdvanceDemoAsync(item, context, token);
     }

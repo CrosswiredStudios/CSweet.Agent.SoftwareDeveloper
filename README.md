@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.3.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.4.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -17,7 +17,7 @@ ticket to Done. Failed work remains In Progress with a bounded blocker.
 `software-development.implement.v1` remains available for an already prepared assignment
 workspace. It never accepts a free-form remote clone URL.
 
-The agent does not merge pull requests, deploy, publish releases, manage credentials, or infer
+The assigned-work capability does not merge pull requests, deploy, publish releases, manage credentials, or infer
 authority from repository content. Those actions remain outside this capability unless a future,
 separately reviewed contract explicitly adds them.
 
@@ -122,7 +122,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.42.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
+Built with `CSweet.Agent.SDK` 3.43.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
 
 ## Release notes
 
@@ -137,15 +137,21 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Linux Hello World test instance (1.3.1)
+## Direct development and Docker test instances (1.4.0)
 
-Ask Daniel: "Please create a Hello World application and provide a link to its running test instance."
-The standalone MVP uses Python 3 inside an ephemeral Ubuntu VM; repository implementation workflows retain their existing authority and behavior.
+Ask Daniel to build an application, for example: "Build a Tetris clone and deploy it. Create your own tickets."
+Without an explicit ticket preference, Daniel asks whether you will create tickets or he should create his own. The question and source request survive restarts and remain bound to the original sender. A manager-created assignment continues through the existing assigned-work flow.
 
-C-Sweet automatically prepares the Linux image, enrolls the local compute service, selects the workstream and template, and creates bounded grants from the installation's approved compute capabilities. Windows requests administrator approval when required. No scripts or technical configuration are required from the user. The ephemeral environment permits port 8080 and a one-hour lifetime, with no persistent storage or outbound network.
+With permission to make his own tickets, Daniel creates a personal task, prepares a private C-Sweet repository through the typed SDK, uses the configured coding model to implement and test custom code, publishes the source commit, and deploys its Dockerfile inside isolated Linux compute. An instance identified in the conversation can be reused if it remains owned, authorized and compatible. Code is retained in Source Control even if deployment is blocked.
 
-The request is retained in Daniel's personal queue; compute events advance it, with a five-minute scheduled recovery deadline for missed events. The response contains a health-checked `http://127.0.0.1:<port>/` URL for use on the compute host machine and its expiry. Each browser connection rechecks current networking grants through the broker. It is not an internet link. Provider shutdown closes publications; explicit stop/destroy closes them immediately. An uncertain command or publication result produces a blocker, never a fabricated link.
+C-Sweet automatically prepares Docker and cached Python/Node base images. Upgrading the old Hello World image waits for confirmed resource teardown, preserves provider identity and journals, and requests UAC when necessary. No user scripts are required. Existing VMs are not retrofitted with Docker.
 
-The chat and compute callbacks use the typed `context.Platform.Compute` client from SDK 3.42.0. They cannot read host files, operate Hyper-V or Docker, or access provider credentials. `software-development.implement.v1` does not gain production deployment authority. SDK defaults report preparation state; the availability event wakes retained requests after setup. Only approved capabilities receive scoped grants, and revoked grants are never revived by setup.
+Compute starts with networking disabled. The business owner explicitly grants a local test link from the business Compute page for one instance, port 8080, and its remaining lease. Granting resumes waiting work automatically. Revocation closes access through the broker. No outbound, private-network or public-internet authority is implied by approving the installation or this local link.
 
-Compute wake events requeue only the owning agent's correlated Running task with a recorded wait. The SDK then claims and advances that task, persisting its result. Event handlers do not run the workflow outside a queue claim. Duplicate hints after requeue are ignored; the five-minute deadline remains a recovery mechanism.
+After the Docker build and HTTP health check succeed, Daniel returns an **Open application** link (opening in a new tab), source link, commit and expiry. The application URL works only on the compute host machine. Known build failures return to the coding model for up to two repair attempts. Unknown command outcomes block instead of submitting another potentially duplicate command.
+
+Current limits: one-hour ephemeral Linux VM, cached `csweet/python:3.12` and `csweet/node:22` bases, 16 MiB source bundle, 30 seconds per guest command and 8 KiB command output. Guest outbound internet, arbitrary dependency downloads, public deployment and long builds are not supported by this local provider yet. Required unavailable dependencies are reported as blockers.
+
+The chat and personal-work callbacks use `context.Platform`, including SDK 3.43.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
+
+Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.

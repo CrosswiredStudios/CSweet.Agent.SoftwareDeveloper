@@ -44,10 +44,17 @@ is configured. GitHub is the initial automated pull-request provider.
 
 ## Intentionally absent
 
-The implementation harness requests no memory, generic planning chat, secret-read, deployment, release, merge,
+The implementation harness requests no memory, secret-read, production deployment, release, merge,
 repository administration, access-control, protected-branch write, or organization-management
-authority. Its communication authority is confined to linked work-item support with the assigned
+authority. Its assigned-work support authority is confined to linked work-item support with the assigned
 team Architect. Its local file and shell access exists only inside the approved developer runtime
 and assignment workspace.
 
-The separate web-preview.manage.v1 callback requests scoped private preview lifecycle, browser testing and certified build capabilities. Installing or upgrading the agent does not activate hosting: owners must review the new declarations and approve the project hosting grant. Public/production deployment remains unsupported.
+
+## Direct personal development
+
+`source-control.personal-work.prepare.v1` creates one deterministic private internal repository for the installation's own live, claimed personal ticket under the business repository policy. It accepts a ticket ID and stable key, not a repository, URL, credential or branch. Existing Git workspace operations remain constrained to that ticket's repository and active team policy.
+
+`platform.user-input.request.v1` asks the originating human who will make tickets. Operating-state read/write retains this decision and deployment progress across restarts. Chat read/send and personal-todo APIs retain their installation and conversation ownership checks.
+
+Compute provisioning and execution are bounded grants. `network.inbound.v1` and `network.publish-port.v1` must be explicitly granted before exposing a local application link; installation approval alone creates neither. Core's owner action scopes both to one instance, port 8080 and the remaining lease. Outbound, private-network and public-endpoint access are separate actions and are not requested by this workflow. The local Hyper-V provider currently rejects those network modes.

@@ -75,7 +75,7 @@ public sealed class ManifestTests
                 GitWorkspaceCapabilities.Publish,
                 GitWorkspaceCapabilities.Cleanup,
                 "platform.build.request.v2", "platform.build.read.v2",
-                "compute.provision.v1", "compute.read.v1", "compute.list.v1", "compute.execute.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1", "work.personal-todo.defer.v1", "communication.chat.read.v1", "communication.message.send.v1"
+                "compute.provision.v1", "compute.read.v1", "compute.list.v1", "compute.execute.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1", "work.personal-todo.defer.v1", "communication.chat.read.v1", "communication.message.send.v1", "source-control.personal-work.prepare.v1", "platform.agent-operating-state.read.v1", "platform.agent-operating-state.write.v1", "platform.user-input.request.v1"
             ],
             required);
         Assert.Equal(

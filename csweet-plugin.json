@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -593,6 +593,30 @@
       "name": "communication.message.send.v1",
       "scope": "organization",
       "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "source-control.personal-work.prepare.v1",
+      "scope": "organization",
+      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.agent-operating-state.read.v1",
+      "scope": "organization",
+      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.agent-operating-state.write.v1",
+      "scope": "organization",
+      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.user-input.request.v1",
+      "scope": "organization",
+      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
       "modelVisible": false
     }
   ],
