@@ -2,11 +2,70 @@ using System.Text.Json;
 using CSweet.Agent.SDK;
 using CSweet.Agent.SDK.Compute;
 using CSweet.WorkManagement.Contracts;
+using Microsoft.Extensions.AI;
+using System.IO.Compression;
+using System.Text.Json.Nodes;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class ComputeDeploymentRecoveryTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Provider_outage_waits_and_reenters_the_existing_workspace_on_review(bool retryable)
+    {
+        var f = new Fixture("Code");
+        var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
+        payload["outcome"] = null;
+        payload["publication"] = null;
+        payload["bundleDigest"] = null;
+        f.State = f.State with { Payload = JsonSerializer.SerializeToElement(payload) };
+        var workspaceId = payload["workspace"]!["workspaceId"]!.GetValue<Guid>();
+        using var archive = new MemoryStream();
+        using (var zip = new ZipArchive(archive, ZipArchiveMode.Create, true))
+        using (var writer = new StreamWriter(zip.CreateEntry("README.md").Open())) writer.Write("Retained source");
+        var pulls = 0;
+        f.Runtime.RegisterCapability<GitWorkspaceSyncRequest, GitWorkspaceSyncResult>(PlatformGitWorkspaceClient.SyncCapability,
+            (_, _) => { pulls++; return Task.FromResult(new GitWorkspaceSyncResult(archive.ToArray())); });
+        var factory = new UnavailableFactory(retryable);
+        var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspaceId);
+        try
+        {
+            for (var review = 0; review < (retryable ? 2 : 1); review++)
+            {
+                var agent = new SoftwareDeveloperAgent(factory);
+                await f.Runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
+                    new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test" } });
+                var result = await agent.HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+                var nextReview = (DateTimeOffset?)typeof(PersonalTodoResult).GetProperty("NextReviewAt",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(result);
+                if (retryable)
+                {
+                    Assert.InRange(nextReview!.Value - DateTimeOffset.UtcNow, TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(5));
+                    Assert.Empty(f.Sent);
+                }
+                else { Assert.Null(nextReview); Assert.Contains("blocked", Assert.Single(f.Sent)); }
+                Assert.Equal("Retained source", await File.ReadAllTextAsync(Path.Combine(root, "README.md")));
+                Assert.Equal(workspaceId, f.State.Payload.GetProperty("workspace").GetProperty("workspaceId").GetGuid());
+            }
+            Assert.Equal(retryable ? 2 : 1, factory.Calls);
+            Assert.Equal(factory.Calls, pulls);
+        }
+        finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
+    }
+
+    private sealed class UnavailableFactory(bool retryable) : IAgentLlmClientFactory
+    {
+        public int Calls;
+        public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            throw new PlatformCapabilityException(PlatformCapabilities.LlmChatStream, PlatformCapabilityErrorCode.Unavailable,
+                "Provider unavailable", failureCode: "llm.provider_unavailable", retryable: retryable);
+        }
+    }
+
     [Fact]
     public async Task Publication_replays_saved_generation_after_restart_and_only_reports_a_verified_link()
     {

@@ -232,6 +232,11 @@ PY
             }
         }
         catch (OperationCanceledException) { throw; }
+        catch (PlatformCapabilityException error) when (
+            error.Capability == PlatformCapabilities.LlmChatStream && error.Retryable == true)
+        {
+            return Wait("Waiting for the LLM provider. Development will retry automatically at the next scheduled review.");
+        }
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
             var reason = "Development is blocked: " + SanitizeBlocker(error.Message);
