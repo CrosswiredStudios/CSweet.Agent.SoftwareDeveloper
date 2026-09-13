@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.4.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.4.1`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -122,7 +122,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.43.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
+Built with `CSweet.Agent.SDK` 3.44.0 and `CSweet.WorkManagement.Contracts` 3.20.0.
 
 ## Release notes
 
@@ -137,7 +137,7 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Direct development and Docker test instances (1.4.0)
+## Direct development and Docker test instances (1.4.1)
 
 Ask Daniel to build an application, for example: "Build a Tetris clone and deploy it. Create your own tickets."
 Without an explicit ticket preference, Daniel asks whether you will create tickets or he should create his own. The question and source request survive restarts and remain bound to the original sender. A manager-created assignment continues through the existing assigned-work flow.
@@ -152,6 +152,12 @@ After the Docker build and HTTP health check succeed, Daniel returns an **Open a
 
 Current limits: one-hour ephemeral Linux VM, cached `csweet/python:3.12` and `csweet/node:22` bases, 16 MiB source bundle, 30 seconds per guest command and 8 KiB command output. Guest outbound internet, arbitrary dependency downloads, public deployment and long builds are not supported by this local provider yet. Required unavailable dependencies are reported as blockers.
 
-The chat and personal-work callbacks use `context.Platform`, including SDK 3.43.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
+The chat and personal-work callbacks use `context.Platform`, including SDK 3.44.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
 
 Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.
+
+## Workspace transfer recovery (1.4.1)
+
+Uses SDK 3.44.0 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
+
+Review the added workspace-sync declaration during the normal update. Source transfer currently supports 512 KiB compressed snapshots, 16 MiB content and 4,096 files; local `.csweet` control files are omitted. Application code must fit these bounds. Network grants and Docker compute limits remain separate.

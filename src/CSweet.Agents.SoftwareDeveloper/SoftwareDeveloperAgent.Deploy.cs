@@ -39,9 +39,18 @@ public sealed partial class SoftwareDeveloperAgent
                 await SaveAsync();
             }
             var workspace = state.Workspace;
-            var root = ValidateDevelopmentWorkspace(workspace.Path,
-                state.Outcome is null || state.BundleDigest is null ||
-                state.Pending is null && state.Stage != "Publish" && state.Offset < state.BundleBytes);
+            var needsFiles = state.Outcome is null || state.BundleDigest is null ||
+                state.Pending is null && state.Stage != "Publish" && state.Offset < state.BundleBytes;
+            if (needsFiles)
+            {
+                var lostLocalFiles = !Directory.Exists(PlatformGitWorkspaceClient.LocalWorkspacePath(workspace.WorkspaceId));
+                workspace = await context.Platform.Git.MaterializeAsync(workspace, 1, ct);
+                state = state with { Workspace = workspace };
+                if (lostLocalFiles && state.Pending is null && state.Stage != "Publish")
+                    state = state with { BundleDigest = null, Offset = 0 };
+                await SaveAsync();
+            }
+            var root = ValidateDevelopmentWorkspace(workspace.Path, needsFiles);
             var bundlePath = Path.Combine(root, ".csweet", "deployment.tar.gz");
             ValidateMetadataPath(root);
             if (state.Outcome is null)
@@ -87,6 +96,7 @@ Include README instructions and test coverage for the requested behavior. The pl
             if (state.Publication is null)
             {
                 await ProgressAsync("Tests passed. Saving the source commit in C-Sweet.");
+                await context.Platform.Git.UploadAsync(workspace, 1, ct);
                 state = state with { Publication = await context.Platform.Git.PublishAsync(new(workspace.WorkspaceId, 1,
                     "Implement " + item.Title, item.Title, state.Outcome.Summary, prefix + $":source:{state.RepairAttempt}",
                     state.Outcome.Validations.Select(x => new GitValidationResult(x.Command, x.Succeeded, x.ExitCode, x.DiagnosticExcerpt)).ToArray()), ct) };
@@ -225,7 +235,7 @@ PY
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
             var reason = "Development is blocked: " + SanitizeBlocker(error.Message);
-            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked", ct);
+            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + item.Revision, ct);
             return PersonalTodoResult.Blocked(reason);
         }
 
@@ -242,7 +252,9 @@ PY
     private static string ValidateDevelopmentWorkspace(string path, bool requireFiles)
     {
         var full = Path.GetFullPath(path);
-        if (!full.StartsWith(Path.GetFullPath("/workspace") + Path.DirectorySeparatorChar, StringComparison.Ordinal) || requireFiles && !Directory.Exists(full) ||
+        var allowed = full.StartsWith(Path.GetFullPath(PlatformGitWorkspaceClient.LocalWorkspaceRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+            !requireFiles && full.StartsWith(Path.GetFullPath("/workspace") + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+        if (!allowed || requireFiles && !Directory.Exists(full) ||
             Directory.Exists(full) && (File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("Invalid assignment workspace.");
         return full;
     }

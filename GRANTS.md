@@ -58,3 +58,9 @@ and assignment workspace.
 `platform.user-input.request.v1` asks the originating human who will make tickets. Operating-state read/write retains this decision and deployment progress across restarts. Chat read/send and personal-todo APIs retain their installation and conversation ownership checks.
 
 Compute provisioning and execution are bounded grants. `network.inbound.v1` and `network.publish-port.v1` must be explicitly granted before exposing a local application link; installation approval alone creates neither. Core's owner action scopes both to one instance, port 8080 and the remaining lease. Outbound, private-network and public-endpoint access are separate actions and are not requested by this workflow. The local Hyper-V provider currently rejects those network modes.
+
+## Workspace transfer recovery (1.4.1)
+
+Uses SDK 3.44.0 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
+
+Review the added workspace-sync declaration during the normal update. Source transfer currently supports 512 KiB compressed snapshots, 16 MiB content and 4,096 files; local `.csweet` control files are omitted. Application code must fit these bounds. Network grants and Docker compute limits remain separate.

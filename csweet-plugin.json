@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -617,6 +617,12 @@
       "name": "platform.user-input.request.v1",
       "scope": "organization",
       "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "modelVisible": false
+    },
+    {
+      "name": "git.workspace.sync.v1",
+      "scope": "work-item",
+      "purpose": "Transfer owned repository snapshots into and out of the isolated developer workspace.",
       "modelVisible": false
     }
   ],
