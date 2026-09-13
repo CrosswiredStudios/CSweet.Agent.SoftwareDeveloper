@@ -18,7 +18,6 @@ public sealed class ManifestTests
         Assert.Equal(agent.AgentId, manifest.Id);
         Assert.Equal(agent.Version, manifest.Version);
         Assert.Contains(SoftwareDeveloperProfile.PrimaryCapability, manifest.Capabilities);
-        Assert.Contains("web-preview.manage.v1", manifest.Capabilities);
         Assert.Contains(WorkManagementCapabilityNames.ExecutionRunV1, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
@@ -75,8 +74,8 @@ public sealed class ManifestTests
                 GitWorkspaceCapabilities.Inspect,
                 GitWorkspaceCapabilities.Publish,
                 GitWorkspaceCapabilities.Cleanup,
-                "web-preview.grant.request.v1", "web-preview.preflight.v1", "web-preview.build.v1", "web-preview.start.v1", "web-preview.read.v1",
-                "web-preview.stop.v1", "web-preview.renew.v1", "web-preview.test.v1", "web-preview.diagnostics.read.v1", "platform.build.request.v2", "platform.build.read.v2", "web-preview.list.v1"
+                "platform.build.request.v2", "platform.build.read.v2",
+                "compute.provision.v1", "compute.read.v1", "compute.list.v1", "compute.execute.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1", "work.personal-todo.defer.v1", "communication.chat.read.v1", "communication.message.send.v1"
             ],
             required);
         Assert.Equal(
@@ -89,7 +88,7 @@ public sealed class ManifestTests
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
         Assert.Equal(
             ["com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
-                AgentCoordinationEvents.TurnRequested, CSweet.WebHost.Contracts.WebPreviewEvents.Changed],
+                AgentCoordinationEvents.TurnRequested, CommunicationEvents.MessageReceived, "com.csweet.compute.changed.v1"],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(item => item.GetString()!).ToArray());
     }

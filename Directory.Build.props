@@ -12,8 +12,5 @@
     <UseLocalCSweetAgentSdk Condition="'$(UseLocalCSweetAgentSdk)' == ''">false</UseLocalCSweetAgentSdk>
   </PropertyGroup>
   <PropertyGroup>
-    <CSweetWebPreviewsRepositoryRoot Condition="'$(CSweetWebPreviewsRepositoryRoot)' == ''">$(MSBuildThisFileDirectory)..\CSweet.Plugins.WebPreviews</CSweetWebPreviewsRepositoryRoot>
-    <UseLocalWebPreviews Condition="'$(UseLocalWebPreviews)' == '' and Exists('$(CSweetWebPreviewsRepositoryRoot)/src/CSweet.Plugins.WebPreviews.Client/CSweet.Plugins.WebPreviews.Client.csproj')">true</UseLocalWebPreviews>
-    <UseLocalWebPreviews Condition="'$(UseLocalWebPreviews)' == ''">false</UseLocalWebPreviews>
   </PropertyGroup>
 </Project>

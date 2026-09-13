@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
-public sealed class SoftwareDeveloperAgent : CSweetAgentBase
+public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 {
     private const int MaxObjectiveLength = 8_000;
     private const int MaxListItems = 100;
@@ -38,11 +38,6 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
     public override string AgentId => SoftwareDeveloperProfile.AgentId;
 
     public override string Version => SoftwareDeveloperProfile.Version;
-
-    public override Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token) =>
-        message.EventType == CSweet.WebHost.Contracts.WebPreviewEvents.Changed
-            ? CSweet.Plugins.WebPreviews.WebPreviewAgentEvents.HandleAsync(message, context, token)
-            : base.HandleEventAsync(message, context, token);
 
     protected override AgentConfigurationBuilder Configure(AgentConfigurationBuilder builder) =>
         builder
@@ -75,16 +70,13 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
                 maximum: 200_000,
                 step: 1_000,
                 defaultValue: SoftwareDeveloperHarness.MaxOutputTokens)
+            .Text("computeWorkstreamId", "Test-instance workstream", description: "Workstream UUID for authorized Linux test instances.")
+            .Text("computeTemplateId", "Linux test template", description: "Approved Ubuntu template containing the compute guest runtime and Python 3.")
             .TextArea(
                 "customInstructions",
                 "Custom instructions",
                 description: "Optional installation guidance for coding conventions and delivery process. It cannot expand agent authority.",
                 placeholder: "Example: Prefer vertical slices and run architecture tests before opening a pull request.");
-
-    public override Task<PersonalTodoResult> HandlePersonalTodoAsync(
-        PersonalTodoItem item, AgentRuntimeContext context, CancellationToken cancellationToken) =>
-        Task.FromResult(PersonalTodoResult.Blocked(
-            "Software Developer work requires an approved, repository-bound work execution assignment; free-form personal queue requests are unsupported."));
 
     public override async Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
         AgentCoordinationTurnRequest request,
@@ -130,8 +122,6 @@ public sealed class SoftwareDeveloperAgent : CSweetAgentBase
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (request.Capability == CSweet.Plugins.WebPreviews.WebPreviewAgentOperations.Capability)
-            return await CSweet.Plugins.WebPreviews.WebPreviewAgentOperations.ExecuteAsync(request, context, cancellationToken);
         if (string.Equals(request.Capability, WorkManagementCapabilityNames.ExecutionRunV1, StringComparison.Ordinal))
             return await ExecuteOrchestratedWorkAsync(request, context, cancellationToken);
         if (!string.Equals(

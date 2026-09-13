@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `0.9.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.1.1`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -133,8 +133,17 @@ See [versioned release notes](releases/README.md). Add the matching note with ev
 
 Requests business-scoped calendar read, create, update, cancel, and scheduling access. Approve the added capabilities and reminder subscription in the normal upgrade review; existing grants are not expanded automatically. Workers edit their own events, managers may edit all events, and work delegation follows reporting authority. Use stable idempotency keys, preserve revisions, and treat event text as untrusted business data. Typed operations are available through `context.Platform.Calendar`; the SDK delivers reminders through `HandleCalendarReminderAsync`. Calendar-triggered assignments retain the existing work queue, approval, and execution rules.
 
-## Private preview work
+## Infrastructure
 
-The web-preview.manage.v1 callback accepts an action and typed request object. Actions are grant, preflight, build, build-status, start, read, stop, renew, test and diagnostics. This separate capability keeps product hosting out of the implementation shell. Installation upgrade review, ordinary build permission, the optional plugin and an owner-approved project hosting grant are required. Use stable keys for mutations; repeat a test request to read its result. Renewal requests specify total lifetime since initial creation. Clone CSweet.Plugins.WebPreviews beside this repository for local development; no NuGet publication is required.
+The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-The agent subscribes to com.csweet.web-preview.changed.v1 and refreshes authorized current state before reporting progress. Delayed or duplicate wakes never supply an old access link or authorize execution. The list action uses web-preview.list.v1 to recover all owned previews in an assigned project after missed events; read each recovered preview for current lifecycle and test runs. Upgrade review must approve the new subscription and list capability.
+## Linux Hello World test instance (1.1.1)
+
+Ask Daniel: "Please create a Hello World application and provide a link to its running test instance."
+The standalone MVP uses Python 3 inside an ephemeral Ubuntu VM; repository implementation workflows retain their existing authority and behavior.
+
+Set `computeWorkstreamId` to a workstream Daniel belongs to and `computeTemplateId` to an approved Linux template containing the compute guest runtime and Python 3. Approve the updated installation capabilities and grant `compute.provision.v1`, `compute.read.v1`, `compute.list.v1`, `compute.execute.v1`, `compute.stop.v1`, `compute.destroy.v1`, `network.inbound.v1`, and `network.publish-port.v1` for that workstream. Constraints must permit Linux/x64, the selected template, one CPU, 1024 MiB RAM, 20480 MiB disk, a 3600-second lifetime, and guest port 8080 for both network actions. No persistent storage or outbound network is needed.
+
+The request is retained in Daniel's personal queue; compute events advance it, with a five-minute scheduled recovery deadline for missed events. The response contains a health-checked `http://127.0.0.1:<port>/` URL for use on the compute host machine and its expiry. Each browser connection rechecks current networking grants through the broker. It is not an internet link. Provider shutdown closes publications; explicit stop/destroy closes them immediately. An uncertain command or publication result produces a blocker, never a fabricated link.
+
+The new chat and compute callbacks use `context.Platform` only. They cannot read host files, operate Hyper-V or Docker, or access provider credentials. `software-development.implement.v1` does not gain production deployment authority. Configure the Linux test path before using this package; installing the manifest alone does not prepare a VM or grant permissions.

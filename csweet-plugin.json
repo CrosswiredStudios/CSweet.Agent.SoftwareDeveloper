@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "0.9.0",
+  "version": "1.1.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -375,46 +375,6 @@
       "executionTimeoutSeconds": 30,
       "idempotency": "work-item",
       "riskClass": "standard"
-    },
-    {
-      "name": "web-preview.manage.v1",
-      "executionTimeoutSeconds": 120,
-      "idempotency": "work-item",
-      "outputSchema": {
-        "type": "object",
-        "additionalProperties": true
-      },
-      "description": "Manage a private product build/preview, request its owner grant, run browser checks and read diagnostics through typed platform callbacks. This is separate from implementation work.",
-      "riskClass": "elevated",
-      "inputSchema": {
-        "properties": {
-          "request": {
-            "type": "object"
-          },
-          "action": {
-            "type": "string",
-            "enum": [
-              "grant",
-              "preflight",
-              "build",
-              "build-status",
-              "start",
-              "read",
-              "stop",
-              "renew",
-              "test",
-              "diagnostics",
-              "list"
-            ]
-          }
-        },
-        "type": "object",
-        "required": [
-          "action",
-          "request"
-        ],
-        "additionalProperties": false
-      }
     }
   ],
   "requires": [
@@ -563,42 +523,6 @@
     },
     {
       "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.grant.request.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.preflight.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.build.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.start.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.read.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.stop.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.renew.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.test.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
-      "name": "web-preview.diagnostics.read.v1"
-    },
-    {
-      "reason": "Optional private product build, demo and testing under owner-approved scoped grants.",
       "name": "platform.build.request.v2"
     },
     {
@@ -606,8 +530,70 @@
       "name": "platform.build.read.v2"
     },
     {
-      "name": "web-preview.list.v1",
-      "reason": "Recover current private preview state after waking or missing lifecycle events."
+      "name": "compute.provision.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.read.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.list.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.execute.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.stop.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.destroy.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "network.inbound.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "network.publish-port.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.personal-todo.defer.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.chat.read.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.message.send.v1",
+      "scope": "organization",
+      "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
     }
   ],
   "events": {
@@ -616,7 +602,8 @@
       "com.csweet.work.personal-todo.available.v1",
       "com.csweet.communication.message.mentioned.v1",
       "com.csweet.agent.coordination.turn-requested.v1",
-      "com.csweet.web-preview.changed.v1"
+      "com.csweet.user.message.received.v1",
+      "com.csweet.compute.changed.v1"
     ]
   },
   "configuration": [
@@ -656,6 +643,20 @@
       "required": true,
       "secret": false,
       "defaultValue": 16000
+    },
+    {
+      "key": "computeWorkstreamId",
+      "type": "text",
+      "label": "Test-instance workstream",
+      "required": false,
+      "secret": false
+    },
+    {
+      "key": "computeTemplateId",
+      "type": "text",
+      "label": "Linux test template",
+      "required": false,
+      "secret": false
     }
   ],
   "credentials": [],
