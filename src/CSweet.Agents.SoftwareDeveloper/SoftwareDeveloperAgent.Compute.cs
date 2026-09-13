@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using CSweet.Agent.SDK;
+using CSweet.Agent.SDK.Compute;
 using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agents.SoftwareDeveloper;
@@ -15,10 +16,10 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token)
     {
-        if (message.EventType == "com.csweet.compute.changed.v1")
+        if (message.EventType == ComputeEvents.Changed)
         {
-            var id = message.Data.GetProperty("environmentId").GetGuid();
-            var environment = await CallAsync<EnvironmentState>(context, "compute.read.v1", new { environmentId = id }, token);
+            var change = message.Data.Deserialize<ComputeChangedEvent>(SerializerOptions) ?? throw new JsonException("Compute event is missing.");
+            var environment = await context.Platform.Compute.ReadAsync(change.EnvironmentId, token);
             if (environment.DesiredEnvironmentKey is not { } key || !key.StartsWith(DemoMarker + ":", StringComparison.Ordinal) ||
                 !Guid.TryParseExact(key[(DemoMarker.Length + 1)..], "N", out var itemId)) return;
             // Wake hints are not snapshots or grants. Re-read both the environment and current queue.
@@ -29,7 +30,7 @@ public sealed partial class SoftwareDeveloperAgent
             return;
         }
 
-        Guid chatId; Guid messageId;
+        Guid chatId; Guid messageId; CommunicationMessageReceivedEvent? received = null;
         if (message.EventType == CommunicationEvents.MessageMentioned)
         {
             var hint = message.Data.Deserialize<CommunicationMessageMentionedEvent>(SerializerOptions);
@@ -38,7 +39,7 @@ public sealed partial class SoftwareDeveloperAgent
         }
         else if (message.EventType == CommunicationEvents.MessageReceived)
         {
-            var hint = message.Data.Deserialize<CommunicationMessageReceivedEvent>(SerializerOptions);
+            var hint = received = message.Data.Deserialize<CommunicationMessageReceivedEvent>(SerializerOptions);
             if (hint is null || !Guid.TryParse(hint.ConversationId, out chatId)) return;
             messageId = hint.MessageId;
         }
@@ -46,23 +47,40 @@ public sealed partial class SoftwareDeveloperAgent
         if (chatId == Guid.Empty || messageId == Guid.Empty) return;
         var chat = await context.Platform.Communication.ReadChatAsync(chatId, token);
         var source = chat.Messages.SingleOrDefault(x => x.Id == messageId && x.ChatId == chatId);
-        if (source is null || source.SenderEmployeeType != "Human" || !IsHelloRequest(source.Content)) return;
+        if (source is null || source.SenderEmployeeType != "Human") return;
+        if (!IsHelloRequest(source.Content))
+        {
+            if (received is { TurnId: var turnId } && turnId != Guid.Empty)
+                await ReplyAsync("I can create a Linux Hello World test instance, or implement software through an assigned work item.", "hello-help");
+            return;
+        }
         var workstream = Settings.GetGuid("computeWorkstreamId");
         var template = Settings.GetString("computeTemplateId");
         if (workstream is null || workstream == Guid.Empty || string.IsNullOrWhiteSpace(template))
         {
-            await context.Platform.Communication.SendMessageAsync(chatId,
+            await ReplyAsync(
                 "Linux application testing is not ready yet. C-Sweet still needs to finish preparing the test environment before I can create this app.",
-                $"hello-setup:{messageId:N}", token);
+                "hello-setup");
             return;
         }
         // Store the approved template/workstream with the durable task; later configuration edits cannot change this request.
         var terms = JsonSerializer.Serialize(new DemoTerms(DemoMarker, workstream.Value, template), SerializerOptions);
         await context.Platform.PersonalTodo.AddAsync(new(DemoTitle, terms, "Normal", null, $"hello-request:{messageId:N}",
             SourceConversationId: chatId, SourceMessageId: messageId), token);
-        await context.Platform.Communication.SendMessageAsync(chatId,
+        await ReplyAsync(
             "I’m creating a Hello World app in an isolated Linux test instance. I’ll return the browser link after the app passes its health check. The link will work on the compute host machine and expire with the test instance.",
-            $"hello-accepted:{messageId:N}", token);
+            "hello-accepted");
+
+        async Task ReplyAsync(string content, string key)
+        {
+            if (received is { TurnId: var turnId } && turnId != Guid.Empty)
+            {
+                await using var stream = context.CreateTurnStream(received.ConversationId, turnId, received.Attempt);
+                await stream.CommitAsync(content, token);
+            }
+            else
+                await context.Platform.Communication.SendMessageAsync(chatId, content, $"{key}:{messageId:N}", token);
+        }
     }
 
     internal static bool IsHelloRequest(string content) => content.Length <= 8000 &&
@@ -86,30 +104,24 @@ public sealed partial class SoftwareDeveloperAgent
             if (terms is null || terms.Kind != DemoMarker || terms.WorkstreamId == Guid.Empty || string.IsNullOrWhiteSpace(terms.TemplateId))
                 return PersonalTodoResult.Blocked("The test-instance request is missing its approved terms.");
             var prefix = $"{DemoMarker}:{item.Id:N}";
-            var environment = await CallAsync<EnvironmentState>(context, "compute.provision.v1", new {
-                workstreamId = terms.WorkstreamId, desiredEnvironmentKey = prefix, idempotencyKey = prefix + ":provision",
-                specification = new { operatingSystem = "linux", architecture = "x64", templateId = terms.TemplateId,
-                    resources = new { cpuCount = 1, memoryMiB = 1024, diskMiB = 20480 }, lifetimeSeconds = 3600, persistence = "ephemeral" }
-            }, token);
+            var environment = await context.Platform.Compute.ProvisionAsync(new(
+                terms.WorkstreamId, prefix, prefix + ":provision",
+                new ComputeSpecification("linux", "x64", terms.TemplateId, new(1, 1024, 20480), 3600)), token);
             if (environment.State is "failed" or "destroying" or "destroyed" or "stopped" || environment.LeaseExpiresAt <= DateTimeOffset.UtcNow)
                 return await BlockAsync("The Linux test instance is unavailable or expired. " + environment.FailureCode);
             if (environment.Generation == 1 && environment.State != "ready") return Wait("Waiting for Linux provisioning.");
             var script = BuildHelloScript(item.Id);
             // Stable IDs, payloads and expected generations survive duplicate wake delivery and agent restarts.
-            var command = await CallAsync<OperationState>(context, "compute.execute.v1", new {
-                environmentId = environment.Id, expectedGeneration = 1, idempotencyKey = prefix + ":run",
-                workload = new { command = new { requestId = item.Id, executable = "/bin/sh", workingDirectory = "/var/lib/csweet-compute/work",
-                    arguments = new[] { "-c", script }, timeoutSeconds = 30, maximumOutputBytes = 8192 } }
-            }, token);
-            command = await CallAsync<OperationState>(context, "compute.read.v1", new { operationId = command.Id }, token);
+            var command = await context.Platform.Compute.ExecuteAsync(new(
+                environment.Id, 1, prefix + ":run", new ComputeCommand(item.Id, "/bin/sh",
+                    "/var/lib/csweet-compute/work", ["-c", script])), token);
+            command = await context.Platform.Compute.ReadOperationAsync(command.Id, token);
             if (command.Status is "Blocked" or "Superseded") return await BlockAsync("Command could not run: " + command.FailureCode);
             if (command.Status != "Completed") return Wait("Waiting for the Hello World service to start.");
             if (command.Result?.Command is not { ExitCode: 0, TimedOut: false, ErrorCode: null } || command.Result.ErrorCode is not null)
                 return await BlockAsync("The Hello World command failed or its outcome is unknown. I will not repeat it automatically.");
-            var publication = await CallAsync<OperationState>(context, "network.publish-port.v1", new {
-                environmentId = environment.Id, expectedGeneration = 2, idempotencyKey = prefix + ":publish", workload = new { publishPort = 8080 }
-            }, token);
-            publication = await CallAsync<OperationState>(context, "compute.read.v1", new { operationId = publication.Id }, token);
+            var publication = await context.Platform.Compute.PublishPortAsync(new(environment.Id, 2, prefix + ":publish", 8080), token);
+            publication = await context.Platform.Compute.ReadOperationAsync(publication.Id, token);
             if (publication.Status is "Blocked" or "Superseded") return await BlockAsync("Port publishing could not proceed: " + publication.FailureCode);
             if (publication.Status != "Completed") return Wait("Waiting for the app health check and test link.");
             if (publication.Result is not { ErrorCode: null, Url: { } url, UrlExpiresAt: { } expiry } || expiry <= DateTimeOffset.UtcNow ||
@@ -158,11 +170,5 @@ HTTPServer(('127.0.0.1', 8080), App).serve_forever()
             "/usr/bin/python3 - <<'PY'\nimport time, urllib.request\nfor attempt in range(40):\n try:\n  response=urllib.request.urlopen('http://127.0.0.1:8080/', timeout=1)\n  assert b'Hello World' in response.read(4096)\n  print('Hello World HTTP health check passed')\n  break\n except Exception:\n  if attempt == 39: raise\n  time.sleep(.25)\nPY\n";
     }
 
-    private static Task<T> CallAsync<T>(AgentRuntimeContext context, string capability, object input, CancellationToken token) =>
-        context.Platform.InvokeAsync<object, T>(capability, input, token);
     private sealed record DemoTerms(string Kind, Guid WorkstreamId, string TemplateId);
-    private sealed record EnvironmentState(Guid Id, long Generation, string State, DateTimeOffset LeaseExpiresAt, string? FailureCode, string? DesiredEnvironmentKey);
-    private sealed record OperationState(Guid Id, string Status, string? FailureCode, WorkloadResult? Result);
-    private sealed record WorkloadResult(CommandResult? Command, string? Url, DateTimeOffset? UrlExpiresAt, string? ErrorCode);
-    private sealed record CommandResult(int? ExitCode, bool TimedOut, string? ErrorCode);
 }
