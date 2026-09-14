@@ -26,7 +26,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             PlanExecution = i == 4 ? "Deployment" : i == 3 ? "Validation" : "Implementation",
             AcceptanceCriteria = ["Focused tests pass"]
         }).ToList();
-        var planCalls = 0; var pushes = 0;
+        var planCalls = 0; var pushes = 0; var checkpoints = 0;
         CreatePersonalWorkPlanRequest? accepted = null;
         f.Runtime.RegisterCapability<CreatePersonalWorkPlanRequest, PersonalWorkPlan>(PersonalWorkPlanCapabilities.Create, (request, _) =>
         {
@@ -62,6 +62,15 @@ public sealed partial class ComputeDeploymentRecoveryTests
             using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, true))
             using (var writer = new StreamWriter(zip.CreateEntry("README.md").Open())) writer.Write("Existing repository");
             return Task.FromResult(new GitWorkspaceSyncResult(stream.ToArray()));
+        }).RegisterCapability<PublishGitWorkspaceRequest, GitWorkspacePublication>(GitWorkspaceCapabilities.Publish, (request, _) =>
+        {
+            checkpoints++;
+            Assert.Equal("Complete Unit 1", request.CommitMessage);
+            Assert.Contains("Unit tested", request.ProposedChangeBody);
+            Assert.Single(request.Validations!);
+            return Task.FromResult(new GitWorkspacePublication(Guid.NewGuid(), workspaceId, Guid.NewGuid(),
+                "InternalGit", GitDeliveryKinds.PullRequest, "csweet/tetris", new string('b', 40),
+                new Uri("http://localhost/source"), "AwaitingValidation"));
         });
         var factory = new PlanningFactory();
         try
@@ -85,6 +94,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             Assert.Equal(2, planCalls);
             Assert.Equal(1, factory.PlanningCalls);
             Assert.Equal(2, pushes);
+            Assert.Equal(1, checkpoints);
             Assert.Equal("Running", tasks[1].Status);
             Assert.Empty(f.Sent);
             Assert.Equal(1, f.State.Payload.GetProperty("planRepairAttempt").GetInt32());

@@ -136,11 +136,21 @@ Include README instructions and test coverage for the requested behavior. The pl
                     return await RetainAndRepairPlanTaskAsync(FailedValidationSummary(outcome));
                 if (planTask is not null && planTask.PlanExecution != "Deployment")
                 {
-                    // Persist the authorized source snapshot before marking this small task complete.
+                    // Persist the authorized source snapshot and advance the visible work branch before
+                    // marking this small task complete. The retained snapshot remains the restart source;
+                    // the branch gives the owner reviewable commits throughout implementation.
                     await context.Platform.Git.UploadAsync(workspace, 1, ct);
-                    state = state with { LastPlanOutcome = outcome, PlanRepairAttempt = 0, PlanFailure = null };
+                    var checkpoint = await context.Platform.Git.PublishAsync(new(workspace.WorkspaceId, 1,
+                        "Complete " + planTask.Title, item.Title,
+                        $"Completed planned task: {planTask.Title}\n\n{outcome.Summary}",
+                        prefix + $":checkpoint:{planTask.Id:N}:{planTask.Revision}",
+                        outcome.Validations.Select(x => new GitValidationResult(
+                            x.Command, x.Succeeded, x.ExitCode, x.DiagnosticExcerpt)).ToArray()), ct);
+                    workspace = workspace with { BaseCommitSha = checkpoint.CommitSha, Status = "Published" };
+                    state = state with { Workspace = workspace, LastPlanOutcome = outcome, PlanRepairAttempt = 0, PlanFailure = null };
                     await SaveAsync();
-                    var evidence = outcome.Summary + "\n" + string.Join("\n", outcome.Validations.Select(x => $"{x.Command}: exit {x.ExitCode}"));
+                    var evidence = outcome.Summary + "\n" + string.Join("\n", outcome.Validations.Select(x => $"{x.Command}: exit {x.ExitCode}")) +
+                        $"\nCheckpoint: {checkpoint.BranchName} @ {checkpoint.CommitSha}";
                     await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id, planTask.Revision,
                         "Completed", evidence.Length <= 4096 ? evidence : evidence[..4096], $"plan-complete:{planTask.Id:N}:{planTask.Revision}"), ct);
                     state = state with { ActivePlanTaskId = null };
