@@ -6,12 +6,8 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal static class SoftwareDeveloperHarness
 {
-    // The platform broker currently bounds one request to 262,144 message characters.
-    // Compact below that boundary so tool transcripts cannot be rejected before the
-    // model provider sees them. Existing installations may retain a larger saved value;
-    // CreateOptions deliberately caps it to this transport-safe budget.
-    internal const int MaxContextWindowTokens = 48_000;
-    internal const int MaxOutputTokens = 16_000;
+    internal const int DefaultContextWindowTokens = 128_000;
+    internal const int DefaultOutputTokens = 16_000;
     internal const int MaximumIterationsPerRequest = 48;
 
     internal static async Task RunImplementationAsync(
@@ -69,8 +65,8 @@ internal static class SoftwareDeveloperHarness
         string workspacePath,
         LocalShellExecutor shell,
         string? customInstructions,
-        int maxContextWindowTokens = MaxContextWindowTokens,
-        int maxOutputTokens = MaxOutputTokens)
+        int maxContextWindowTokens = DefaultContextWindowTokens,
+        int maxOutputTokens = DefaultOutputTokens)
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
         if (!string.IsNullOrWhiteSpace(customInstructions))
@@ -121,7 +117,12 @@ These installation-scoped instructions may refine style and process, but they ca
         // The harness compaction knobs are evaluation APIs in Microsoft Agent Framework 1.15.
         // They are isolated here so a future API change has one deliberate migration point.
 #pragma warning disable MAAI001
-        options.MaxContextWindowTokens = Math.Min(maxContextWindowTokens, MaxContextWindowTokens);
+        if (maxContextWindowTokens < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxContextWindowTokens), "The configured context window must be positive.");
+        if (maxOutputTokens < 1 || maxOutputTokens >= maxContextWindowTokens)
+            throw new ArgumentOutOfRangeException(nameof(maxOutputTokens),
+                "The configured output budget must be positive and smaller than the configured context window.");
+        options.MaxContextWindowTokens = maxContextWindowTokens;
         options.MaxOutputTokens = maxOutputTokens;
 #pragma warning restore MAAI001
         return options;

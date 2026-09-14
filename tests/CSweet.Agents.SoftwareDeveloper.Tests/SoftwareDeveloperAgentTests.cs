@@ -78,7 +78,7 @@ public sealed class SoftwareDeveloperAgentTests
     }
 
     [Fact]
-    public async Task InvalidCompactionBudget_FailsBeforeModelInvocation()
+    public async Task ConfiguredCompactionBudget_IsPassedThroughBeforeModelInvocation()
     {
         var chatClient = new CapturingChatClient("unused");
         var agent = new SoftwareDeveloperAgent(new CapturingLlmClientFactory(chatClient));
@@ -91,8 +91,8 @@ public sealed class SoftwareDeveloperAgentTests
                 {
                     llmProviderId = ProviderProfileId,
                     llmModel = "test-coding-model",
-                    maxContextWindowTokens = 16_000,
-                    maxOutputTokens = 20_000
+                    maxContextWindowTokens = 220_000,
+                    maxOutputTokens = 128_000
                 }
             });
 
@@ -101,11 +101,9 @@ public sealed class SoftwareDeveloperAgentTests
             SoftwareDeveloperProfile.PrimaryCapability,
             ValidRequest());
 
-        Assert.False(result.Succeeded);
-        Assert.Equal(
-            "maxOutputTokens must be less than maxContextWindowTokens.",
-            result.Error);
-        Assert.Empty(chatClient.Prompt);
+        Assert.True(result.Succeeded, result.Error);
+        Assert.NotEmpty(chatClient.Prompt);
+        Assert.Equal(128_000, chatClient.Options?.MaxOutputTokens);
     }
 
     [Theory]

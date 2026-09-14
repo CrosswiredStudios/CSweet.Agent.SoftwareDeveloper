@@ -81,9 +81,10 @@ public sealed class HarnessExecutionTests
         {
             using var client = new ScriptedClient(false, contextLimitOnce: true);
             await using var shell = SoftwareDeveloperHarness.CreateShell(root);
-            var options = SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null, 128_000, 16_000);
+            var options = SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null, 220_000, 128_000);
 #pragma warning disable MAAI001
-            Assert.Equal(SoftwareDeveloperHarness.MaxContextWindowTokens, options.MaxContextWindowTokens);
+            Assert.Equal(220_000, options.MaxContextWindowTokens);
+            Assert.Equal(128_000, options.MaxOutputTokens);
 #pragma warning restore MAAI001
             var harness = client.AsHarnessAgent(options);
             var session = await harness.CreateSessionAsync();

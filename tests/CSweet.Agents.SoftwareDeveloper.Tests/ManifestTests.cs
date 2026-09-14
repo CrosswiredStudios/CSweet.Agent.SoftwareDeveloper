@@ -26,11 +26,11 @@ public sealed class ManifestTests
             document.RootElement.GetProperty("rolePolicy").GetProperty("profile").GetString());
         var configuration = document.RootElement.GetProperty("configuration").EnumerateArray().ToArray();
         Assert.Equal(
-            SoftwareDeveloperHarness.MaxContextWindowTokens,
+            SoftwareDeveloperHarness.DefaultContextWindowTokens,
             configuration.Single(field => field.GetProperty("key").GetString() == "maxContextWindowTokens")
                 .GetProperty("defaultValue").GetInt32());
         Assert.Equal(
-            SoftwareDeveloperHarness.MaxOutputTokens,
+            SoftwareDeveloperHarness.DefaultOutputTokens,
             configuration.Single(field => field.GetProperty("key").GetString() == "maxOutputTokens")
                 .GetProperty("defaultValue").GetInt32());
         Assert.True(File.Exists(Path.Combine(

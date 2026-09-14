@@ -114,7 +114,7 @@ Do not claim work has run, repository changes exist, or a link is live. Those re
             new(ChatRole.User, JsonSerializer.Serialize(new { currentHumanMessage = message, pending,
                 recentHistory = history.OrderByDescending(x => x.Sequence).Take(12).OrderBy(x => x.Sequence)
                     .Select(x => new { x.SenderDisplayName, x.SenderEmployeeType, x.Content }) }, SerializerOptions))],
-            new ChatOptions { MaxOutputTokens = 3000 }, ct);
+            new ChatOptions { MaxOutputTokens = Settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens) }, ct);
         return JsonSerializer.Deserialize<IntakeDecision>(StripJsonFence(response.Text), SerializerOptions) ?? throw new JsonException("Empty work intake.");
     }
 

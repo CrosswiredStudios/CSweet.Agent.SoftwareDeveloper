@@ -56,20 +56,18 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 "maxContextWindowTokens",
                 "Maximum context-window tokens",
                 required: true,
-                description: "Configures harness compaction for the selected model. Values above the broker-safe budget are capped automatically.",
-                minimum: 16_000,
-                maximum: 2_000_000,
+                description: "Configures harness compaction for the selected model. The installation value is passed through unchanged.",
+                minimum: 1,
                 step: 1_000,
-                defaultValue: SoftwareDeveloperHarness.MaxContextWindowTokens)
+                defaultValue: SoftwareDeveloperHarness.DefaultContextWindowTokens)
             .Number(
                 "maxOutputTokens",
                 "Maximum output tokens",
                 required: true,
-                description: "Caps one model response and reserves space during harness compaction.",
-                minimum: 1_000,
-                maximum: 200_000,
+                description: "Configures one model response and reserves space during harness compaction. The installation value is passed through unchanged.",
+                minimum: 1,
                 step: 1_000,
-                defaultValue: SoftwareDeveloperHarness.MaxOutputTokens)
+                defaultValue: SoftwareDeveloperHarness.DefaultOutputTokens)
             // Preserve settings already accepted by the published installation manifest.
             // Compute placement and authorization still come from the platform broker.
             .Text("computeWorkstreamId", "Test-instance workstream",
@@ -161,16 +159,10 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 
         var maxContextWindowTokens = Settings.GetInt32(
             "maxContextWindowTokens",
-            SoftwareDeveloperHarness.MaxContextWindowTokens);
+            SoftwareDeveloperHarness.DefaultContextWindowTokens);
         var maxOutputTokens = Settings.GetInt32(
             "maxOutputTokens",
-            SoftwareDeveloperHarness.MaxOutputTokens);
-        if (maxOutputTokens >= maxContextWindowTokens)
-        {
-            return AgentWorkResult.Failure(
-                "maxOutputTokens must be less than maxContextWindowTokens.");
-        }
-
+            SoftwareDeveloperHarness.DefaultOutputTokens);
         await context.ReportProgressAsync(
             new
             {
@@ -341,14 +333,10 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 
         var maxContextWindowTokens = Settings.GetInt32(
             "maxContextWindowTokens",
-            SoftwareDeveloperHarness.MaxContextWindowTokens);
+            SoftwareDeveloperHarness.DefaultContextWindowTokens);
         var maxOutputTokens = Settings.GetInt32(
             "maxOutputTokens",
-            SoftwareDeveloperHarness.MaxOutputTokens);
-        if (maxOutputTokens >= maxContextWindowTokens)
-            throw new InvalidOperationException(
-                "maxOutputTokens must be less than maxContextWindowTokens.");
-
+            SoftwareDeveloperHarness.DefaultOutputTokens);
         var selection = new AgentLlmSelection(providerProfileId, model);
         var chatClient = _llmClientFactory is null
             ? context.CreateChatClient(selection)

@@ -94,8 +94,8 @@ public sealed partial class SoftwareDeveloperAgent
                 await using var shell = SoftwareDeveloperHarness.CreateShell(root);
                 var options = SoftwareDeveloperHarness.CreateOptions(context.Identity?.DisplayName ?? "Daniel Kim", root, shell,
                     Settings.GetString("customInstructions"),
-                    Settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.MaxContextWindowTokens),
-                    Settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.MaxOutputTokens));
+                    Settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
+                    Settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
                 var harness = client.AsHarnessAgent(options);
                 var session = await harness.CreateSessionAsync(ct);
                 try
