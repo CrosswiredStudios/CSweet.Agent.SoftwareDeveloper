@@ -84,9 +84,12 @@ public sealed partial class ComputeDeploymentRecoveryTests
             }
             Assert.Equal(2, planCalls);
             Assert.Equal(1, factory.PlanningCalls);
-            Assert.Equal(1, pushes);
-            Assert.Equal("Running", tasks[1].Status); // Platform will block it when the coordinator blocks.
-            Assert.Contains("blocked", Assert.Single(f.Sent));
+            Assert.Equal(2, pushes);
+            Assert.Equal("Running", tasks[1].Status);
+            Assert.Empty(f.Sent);
+            Assert.Equal(1, f.State.Payload.GetProperty("planRepairAttempt").GetInt32());
+            Assert.Contains("fixture-test", f.State.Payload.GetProperty("planFailure").GetString());
+            Assert.Contains("assertion failed", f.State.Payload.GetProperty("planFailure").GetString());
             Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
         }
         finally
@@ -133,13 +136,16 @@ public sealed partial class ComputeDeploymentRecoveryTests
             var text = string.Join(" ", messages.Select(x => x.Text));
             Assert.Contains("Implement ONLY this planned task now: Unit " + (phase - 1), text);
             var turn = ++_turn;
-            if (phase > 2) { yield return new(ChatRole.Assistant, "I will work on it."); yield break; }
+            if (phase > 3) { yield return new(ChatRole.Assistant, "I will work on it."); yield break; }
             if (turn <= 2)
             {
-                var outcome = """{"summary":"Unit tested","changedFiles":["unit.txt"],"validations":[{"command":"fixture-check","succeeded":true,"exitCode":0}],"remainingRisks":[]}""";
+                var failed = phase == 3;
+                var outcome = failed
+                    ? """{"summary":"Unit validation failed","changedFiles":["failed.txt"],"validations":[{"command":"fixture-test","succeeded":false,"exitCode":1,"diagnosticExcerpt":"assertion failed"}],"remainingRisks":[]}"""
+                    : """{"summary":"Unit tested","changedFiles":["unit.txt"],"validations":[{"command":"fixture-check","succeeded":true,"exitCode":0}],"remainingRisks":[]}""";
                 yield return new(ChatRole.Assistant, [new FunctionCallContent("write-" + turn, "file_access_write",
-                    new Dictionary<string, object?> { ["fileName"] = turn == 1 ? "unit.txt" : ".csweet/outcome.json",
-                        ["content"] = turn == 1 ? "Implemented unit" : outcome, ["overwrite"] = true })]);
+                    new Dictionary<string, object?> { ["fileName"] = turn == 1 ? failed ? "failed.txt" : "unit.txt" : ".csweet/outcome.json",
+                        ["content"] = turn == 1 ? failed ? "Needs repair" : "Implemented unit" : outcome, ["overwrite"] = true })]);
             }
             else yield return new(ChatRole.Assistant, "Unit complete.");
         }
