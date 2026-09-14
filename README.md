@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.4.6`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.5.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -124,7 +124,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.44.3 and `CSweet.WorkManagement.Contracts` 3.20.0.
+Built with `CSweet.Agent.SDK` 3.45.0 and `CSweet.WorkManagement.Contracts` 3.21.0.
 
 ## Release notes
 
@@ -139,7 +139,7 @@ Requests business-scoped calendar read, create, update, cancel, and scheduling a
 
 The WebHost proof of concept and its private-preview callbacks have been retired. Ordinary software implementation and delivery-build authority remain separately scoped.
 
-## Direct development and Docker test instances (1.4.6)
+## Direct development and Docker test instances (1.5.0)
 
 Ask Daniel to build an application, for example: "Build a Tetris clone and deploy it. Create your own tickets."
 Without an explicit ticket preference, Daniel asks whether you will create tickets or he should create his own. The question and source request survive restarts and remain bound to the original sender. A manager-created assignment continues through the existing assigned-work flow.
@@ -154,16 +154,24 @@ After the Docker build and HTTP health check succeed, Daniel returns an **Open a
 
 Current limits: one-hour ephemeral Linux VM, cached `csweet/python:3.12` and `csweet/node:22` bases, 16 MiB source bundle, 30 seconds per guest command and 8 KiB command output. Guest outbound internet, arbitrary dependency downloads, public deployment and long builds are not supported by this local provider yet. Required unavailable dependencies are reported as blockers.
 
-The chat and personal-work callbacks use `context.Platform`, including SDK 3.44.3's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
+The chat and personal-work callbacks use `context.Platform`, including SDK 3.45.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
 
 Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.
 
-## Workspace transfer recovery (1.4.6)
+## Workspace transfer recovery (1.5.0)
 
-Uses SDK 3.44.3 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
+Uses SDK 3.45.0 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
 
 Review the added workspace-sync declaration during the normal update. Source transfer currently supports 512 KiB compressed snapshots, 16 MiB content and 4,096 files; local `.csweet` control files are omitted. Application code must fit these bounds. Network grants and Docker compute limits remain separate.
 
 Temporary LLM provider outages retain the development task and schedule a review after five minutes. Once the provider is available, the next review retries coding in the existing workspace. Configuration errors and denied grants still require correction.
 
 The unattended harness authorizes reads and writes only in its assigned file store. It continues incomplete coding responses for up to three turns and reports unsupported approval pauses explicitly. If a test instance expires before deployment has an unresolved command, Daniel retains the source commit and requests one replacement through the normal compute grant checks. Network grants are never copied to the replacement.
+
+## Solo MVP planning
+
+When a human asks Daniel to create his own tickets for an unplanned application, he first creates an MVP epic with 2–8 testable stories and 2–8 scoped tasks per story (maximum 48 tasks). The full backlog is saved before coding. Each task has acceptance criteria; integration validation immediately precedes the final deployment task.
+
+Daniel runs one task per durable callback, saves its repository snapshot and validation evidence, then continues with the next task. Stories roll up progress; failures block the active task, story, and epic. Requeue the epic to resume the retained plan. Existing assigned-work planning and deployments already in progress remain supported. Networking still requires a separate explicit grant.
+
+The new manifest requests work.personal-plan.create.v1 and work.personal-plan.report-task.v1. These operate only under the owning personal-work claim and scoped grants. Deploying this release requires SDK 3.45.0, WorkManagement.Contracts 3.21.0, and the corresponding C-Sweet planning broker update.

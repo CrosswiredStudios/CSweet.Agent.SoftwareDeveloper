@@ -8,12 +8,12 @@ using System.Text.Json.Nodes;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
-public sealed class ComputeDeploymentRecoveryTests
+public sealed partial class ComputeDeploymentRecoveryTests
 {
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Provider_outage_waits_and_reenters_the_existing_workspace_on_review(bool retryable)
+    public async Task Provider_outage_waits_and_retries_planning_before_touching_source(bool retryable)
     {
         var f = new Fixture("Code");
         var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
@@ -46,11 +46,11 @@ public sealed class ComputeDeploymentRecoveryTests
                     Assert.Empty(f.Sent);
                 }
                 else { Assert.Null(nextReview); Assert.Contains("blocked", Assert.Single(f.Sent)); }
-                Assert.Equal("Retained source", await File.ReadAllTextAsync(Path.Combine(root, "README.md")));
+                Assert.False(Directory.Exists(root));
                 Assert.Equal(workspaceId, f.State.Payload.GetProperty("workspace").GetProperty("workspaceId").GetGuid());
             }
             Assert.Equal(retryable ? 2 : 1, factory.Calls);
-            Assert.Equal(factory.Calls, pulls);
+            Assert.Equal(0, pulls);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }

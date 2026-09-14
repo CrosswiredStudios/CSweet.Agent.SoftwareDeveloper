@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.4.6",
+  "version": "1.5.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -623,6 +623,18 @@
       "name": "git.workspace.sync.v1",
       "scope": "work-item",
       "purpose": "Transfer owned repository snapshots into and out of the isolated developer workspace.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.personal-plan.create.v1",
+      "scope": "organization",
+      "purpose": "Plan owned direct requests as MVP epics, testable stories, and small tasks; report verified task progress.",
+      "modelVisible": false
+    },
+    {
+      "name": "work.personal-plan.report-task.v1",
+      "scope": "organization",
+      "purpose": "Plan owned direct requests as MVP epics, testable stories, and small tasks; report verified task progress.",
       "modelVisible": false
     }
   ],

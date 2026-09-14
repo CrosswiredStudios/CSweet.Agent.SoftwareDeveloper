@@ -17,7 +17,8 @@ public sealed partial class SoftwareDeveloperAgent
         GitWorkspacePublication? Publication = null, string? BundleDigest = null, int BundleBytes = 0, int Offset = 0,
         Guid? EnvironmentId = null, Guid? WorkstreamId = null, string? TemplateId = null,
         int Step = 0, string Stage = "Code", PendingDeploymentCommand? Pending = null, string? Result = null,
-        long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0);
+        long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0, CreatePersonalWorkPlanRequest? PlanRequest = null,
+        Guid? ActivePlanTaskId = null, SoftwareDevelopmentOutcome? LastPlanOutcome = null);
     private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
     private const int DeploymentChunkBytes = 8192;
 
@@ -32,6 +33,31 @@ public sealed partial class SoftwareDeveloperAgent
         try
         {
             if (state.Result is not null) return await CompletedAsync(state.Result);
+            PersonalTodoItem? planTask = null;
+            if (state.PlanRequest is not null || state.Outcome is null && state.Publication is null)
+            {
+                if (state.PlanRequest is null)
+                {
+                    await ProgressAsync("Planning the MVP epic, testable stories, and small tasks before implementation.");
+                    state = state with { PlanRequest = await PlanDevelopmentAsync(item, terms, context, ct) };
+                    await SaveAsync();
+                }
+                var plan = await context.Platform.PersonalTodo.CreatePlanAsync(state.PlanRequest, ct);
+                planTask = plan.Items.OrderBy(x => x.Rank).FirstOrDefault(x =>
+                    x.Kind == "Task" && x.PlanRootId == item.Id && x.Status != PersonalTodoStatuses.Completed);
+                if (planTask is null) throw new InvalidOperationException("The completed plan is missing its verified deployment result.");
+                state = state with { ActivePlanTaskId = planTask.Id };
+                if (planTask.Status != PersonalTodoStatuses.Running)
+                    planTask = await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id,
+                        planTask.Revision, "Running", null, $"plan-start:{planTask.Id:N}:{planTask.Revision}"), ct);
+                await SaveAsync();
+                await ProgressAsync($"{planTask.Title} ({plan.Items.Count(x => x.Kind == "Task" && x.Status == "Completed")}/{plan.Items.Count(x => x.Kind == "Task")} tasks complete).");
+                if (planTask.PlanExecution == "Deployment" && state.Outcome is null && state.LastFailure is null)
+                {
+                    state = state with { Outcome = state.LastPlanOutcome ?? throw new InvalidOperationException("Integration validation evidence is missing.") };
+                    await SaveAsync();
+                }
+            }
             if (state.Workspace is null)
             {
                 await ProgressAsync("Preparing a private C-Sweet repository for this task.");
@@ -56,6 +82,9 @@ public sealed partial class SoftwareDeveloperAgent
             if (state.Outcome is null)
             {
                 if (File.Exists(bundlePath)) File.Delete(bundlePath);
+                // A prior task's outcome cannot serve as completion evidence for this task.
+                var outcomePath = Path.Combine(root, ".csweet", "outcome.json");
+                if (File.Exists(outcomePath)) File.Delete(outcomePath);
                 await ProgressAsync("Writing application code, Docker configuration, and tests.");
                 using var client = await DevelopmentChatClientAsync(context, ct);
                 await using var shell = SoftwareDeveloperHarness.CreateShell(root);
@@ -66,13 +95,13 @@ public sealed partial class SoftwareDeveloperAgent
                 var session = await harness.CreateSessionAsync(ct);
                 await SoftwareDeveloperHarness.RunImplementationAsync(harness, session, $$"""
 Implement this personal software-development ticket in the current repository snapshot:
-{{terms.Request}}
+{{TaskScope(planTask, terms.Request)}}
 
 Previous compute build/test failure to investigate and repair (if any):
 {{state.LastFailure ?? "None"}}
 
 Create real application code and relevant automated tests. Choose a suitable implementation for the request.
-Create a Dockerfile at the repository root. The container MUST listen on 0.0.0.0:8080 and serve HTTP at /.
+Create a Dockerfile at the repository root when this task concerns deployment readiness or integration validation. The final container MUST listen on 0.0.0.0:8080 and serve HTTP at /.
 The platform will build the Dockerfile in an isolated Linux VM, run the container, perform an HTTP health
 check, and publish a separately authorized local test link. Do not run Docker in this agent workspace.
 The deployment VM has no external network. Available cached Docker bases are csweet/python:3.12 and
@@ -89,10 +118,25 @@ Include README instructions and test coverage for the requested behavior. The pl
                 var outcome = await ReadOutcomeAsync(root, ct);
                 if (outcome.Validations.Count == 0 || outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
                     throw new InvalidOperationException("Application tests failed. " + outcome.Summary);
+                if (planTask is not null && planTask.PlanExecution != "Deployment")
+                {
+                    // Persist the authorized source snapshot before marking this small task complete.
+                    await context.Platform.Git.UploadAsync(workspace, 1, ct);
+                    state = state with { LastPlanOutcome = outcome };
+                    await SaveAsync();
+                    var evidence = outcome.Summary + "\n" + string.Join("\n", outcome.Validations.Select(x => $"{x.Command}: exit {x.ExitCode}"));
+                    await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id, planTask.Revision,
+                        "Completed", evidence.Length <= 4096 ? evidence : evidence[..4096], $"plan-complete:{planTask.Id:N}:{planTask.Revision}"), ct);
+                    state = state with { ActivePlanTaskId = null };
+                    await SaveAsync();
+                    return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Task verified and source saved. Continuing with the next planned task.");
+                }
                 if (!File.Exists(Path.Combine(root, "Dockerfile"))) throw new InvalidOperationException("The implementation did not produce a Dockerfile.");
                 state = state with { Outcome = outcome };
                 await SaveAsync();
             }
+            if (state.Publication is null && !File.Exists(Path.Combine(root, "Dockerfile")))
+                throw new InvalidOperationException("Integration validation did not produce the required Dockerfile.");
             if (state.Publication is null)
             {
                 await ProgressAsync("Tests passed. Saving the source commit in C-Sweet.");
@@ -262,6 +306,14 @@ PY
         PersonalTodoResult Wait(string reason) => PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), reason);
         async Task<PersonalTodoResult> CompletedAsync(string summary)
         {
+            if (state.PlanRequest is not null && state.ActivePlanTaskId is { } active)
+            {
+                var directory = await context.Platform.PersonalTodo.ListAsync(ct);
+                var task = directory.Boards.SelectMany(x => x.Items).Single(x => x.Id == active);
+                if (task.Status != "Completed")
+                    await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, task.Id, task.Revision,
+                        "Completed", summary, $"plan-deployed:{task.Id:N}"), ct);
+            }
             if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, summary, prefix + ":complete", ct);
             return PersonalTodoResult.Completed(summary);
         }

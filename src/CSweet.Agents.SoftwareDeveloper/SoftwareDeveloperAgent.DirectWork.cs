@@ -73,7 +73,7 @@ public sealed partial class SoftwareDeveloperAgent
         var terms = JsonSerializer.Serialize(new DirectWorkTerms(DirectWorkMarker, intake.Request, intake.EnvironmentId), SerializerOptions);
         var item = await context.Platform.PersonalTodo.AddAsync(new(intake.Title, terms, "Medium", null,
             $"direct-work:{intake.RequestId:N}", SourceConversationId: chatId, SourceMessageId: intake.RequestId), ct);
-        await ReplyAsync($"I’ve created my task, “{item.Title}”. I’ll save the code in a C-Sweet repository, build and test the application in isolated compute, and return the verified link. Any network access needs a separate grant. Progress and blockers will appear on the task.");
+        await ReplyAsync($"I’ve retained “{item.Title}”. I’ll first create an MVP epic with testable stories and small tasks, then work through that backlog in order. I’ll save the code in C-Sweet, validate and deploy it in isolated compute, and return the verified link. Network access still needs a separate grant. The board will show progress for each task.");
 
         Task<UserQuestionResponse> AskAsync(Intake value) => context.Platform.AskUserAsync(new(chatId, value.TurnId,
             "Who should create the tickets for this request?",
