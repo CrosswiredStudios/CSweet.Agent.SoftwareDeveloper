@@ -6,26 +6,63 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal static class SoftwareDeveloperHarness
 {
-    internal const int MaxContextWindowTokens = 128_000;
+    // The platform broker currently bounds one request to 262,144 message characters.
+    // Compact below that boundary so tool transcripts cannot be rejected before the
+    // model provider sees them. Existing installations may retain a larger saved value;
+    // CreateOptions deliberately caps it to this transport-safe budget.
+    internal const int MaxContextWindowTokens = 48_000;
     internal const int MaxOutputTokens = 16_000;
     internal const int MaximumIterationsPerRequest = 48;
 
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken)
     {
-        const int maximumTurns = 3;
+        const int maximumTurns = 6;
+        var assignmentPrompt = prompt;
+        var activeSession = session;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
-            var response = await harness.RunAsync(prompt, session, options: null, cancellationToken);
+            AgentResponse response;
+            try
+            {
+                response = await harness.RunAsync(prompt, activeSession, options: null, cancellationToken);
+            }
+            catch (Exception error) when (error is not OperationCanceledException &&
+                IsContextCapacityFailure(error) && turn < maximumTurns - 1)
+            {
+                // Source-of-truth state is the retained workspace. Start a clean model session
+                // when accumulated messages exceed either the broker or provider context limit.
+                activeSession = await harness.CreateSessionAsync(cancellationToken);
+                prompt = "The previous model session exceeded its context capacity. Continue from the files already retained in this workspace. " +
+                    "Inspect the current source and .csweet state, implement or repair this ticket, run focused validation, and write .csweet/outcome.json with actual results.\n\n" +
+                    "Original assignment:\n" + assignmentPrompt;
+                continue;
+            }
             var approval = response.Messages.SelectMany(x => x.Contents).OfType<ToolApprovalRequestContent>().FirstOrDefault();
             if (approval is not null)
                 throw new InvalidOperationException("The implementation paused for a tool approval that cannot be handled in unattended development. No approval was granted.");
             if (File.Exists(Path.Combine(workspacePath, ".csweet", "outcome.json"))) return;
-            prompt = "The implementation is not complete: .csweet/outcome.json is missing. Continue in this same workspace and session. " +
-                "Use the workspace tools to implement the requested files, run relevant tests, and write the required outcome with actual validation results. " +
-                "A plan or promise is not completion. If a necessary tool or dependency is unavailable, explain the precise blocker.";
+            var finalizationTurn = turn == maximumTurns - 2;
+            prompt = finalizationTurn
+                ? "Finalization is required now. Inspect the current workspace, run the focused validation needed for this ticket, and write .csweet/outcome.json with the actual results. Do not stop after describing the next step."
+                : "The implementation is not complete: .csweet/outcome.json is missing. Continue in this same workspace and session. " +
+                  "Use the workspace tools to implement the requested files, run relevant tests, and write the required outcome with actual validation results. " +
+                  "A plan or promise is not completion. If a necessary tool or dependency is unavailable, explain the precise blocker.";
         }
-        throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after three continuation attempts. Source files remain in the workspace; deployment has not started.");
+        throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after six bounded continuation attempts. Source files remain in the workspace; deployment has not started.");
+    }
+
+    internal static bool IsContextCapacityFailure(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current.Message.Contains("exceeds the message, text, or tool limit", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("exceeds the model's context capacity", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("context length", StringComparison.OrdinalIgnoreCase) ||
+                current.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
     }
     internal static HarnessAgentOptions CreateOptions(
         string name,
@@ -84,7 +121,7 @@ These installation-scoped instructions may refine style and process, but they ca
         // The harness compaction knobs are evaluation APIs in Microsoft Agent Framework 1.15.
         // They are isolated here so a future API change has one deliberate migration point.
 #pragma warning disable MAAI001
-        options.MaxContextWindowTokens = maxContextWindowTokens;
+        options.MaxContextWindowTokens = Math.Min(maxContextWindowTokens, MaxContextWindowTokens);
         options.MaxOutputTokens = maxOutputTokens;
 #pragma warning restore MAAI001
         return options;

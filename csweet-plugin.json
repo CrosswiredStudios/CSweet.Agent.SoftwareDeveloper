@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.5.2",
+  "version": "1.5.4",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -677,7 +677,7 @@
       "label": "Maximum context-window tokens",
       "required": true,
       "secret": false,
-      "defaultValue": 128000
+      "defaultValue": 48000
     },
     {
       "key": "maxOutputTokens",

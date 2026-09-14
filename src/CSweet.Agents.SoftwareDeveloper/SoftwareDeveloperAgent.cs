@@ -56,7 +56,7 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 "maxContextWindowTokens",
                 "Maximum context-window tokens",
                 required: true,
-                description: "Configures harness compaction for the selected model's context window.",
+                description: "Configures harness compaction for the selected model. Values above the broker-safe budget are capped automatically.",
                 minimum: 16_000,
                 maximum: 2_000_000,
                 step: 1_000,
@@ -367,15 +367,13 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
             new { stage = "implementing", itemId = item.Id, workspace = workspace.WorkspaceId },
             cancellationToken);
         var session = await harness.CreateSessionAsync(cancellationToken);
-        var response = await harness.RunAsync(
+        await SoftwareDeveloperHarness.RunImplementationAsync(
+            harness,
+            session,
             BuildAssignmentPrompt(operationId, item, assignmentRevision,
                 guidance.Items.Select(x => x.Body).ToArray()),
-            session,
-            options: null,
+            workspacePath,
             cancellationToken);
-        if (string.IsNullOrWhiteSpace(response.Text))
-            throw new InvalidOperationException(
-                "The implementation harness returned no implementation report.");
 
         var outcome = await ReadOutcomeAsync(workspacePath, cancellationToken);
         if (outcome.Validations.Count == 0 ||

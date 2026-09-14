@@ -41,8 +41,8 @@ public sealed class HarnessExecutionTests
             var session = await harness.CreateSessionAsync();
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => SoftwareDeveloperHarness.RunImplementationAsync(
                 harness, session, "Implement the ticket.", root, default));
-            Assert.Contains("three continuation", error.Message);
-            Assert.Equal(3, client.Calls);
+            Assert.Contains("six bounded continuation", error.Message);
+            Assert.Equal(6, client.Calls);
 
         }
         finally { Directory.Delete(root, true); }
@@ -71,7 +71,38 @@ public sealed class HarnessExecutionTests
         }
         finally { Directory.Delete(root, true); }
     }
-    private sealed class ScriptedClient(bool stopEarly, bool promisesOnly = false, bool expectApproval = false) : IChatClient
+
+    [Fact]
+    public async Task Starts_a_clean_session_and_continues_from_retained_files_after_context_limit()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-harness-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new ScriptedClient(false, contextLimitOnce: true);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var options = SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null, 128_000, 16_000);
+#pragma warning disable MAAI001
+            Assert.Equal(SoftwareDeveloperHarness.MaxContextWindowTokens, options.MaxContextWindowTokens);
+#pragma warning restore MAAI001
+            var harness = client.AsHarnessAgent(options);
+            var session = await harness.CreateSessionAsync();
+
+            await SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Implement the ticket.", root, default);
+
+            Assert.Equal("implemented", await File.ReadAllTextAsync(Path.Combine(root, "app.txt")));
+            Assert.True(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+            Assert.Equal(4, client.Calls);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    private sealed class ScriptedClient(
+        bool stopEarly,
+        bool promisesOnly = false,
+        bool expectApproval = false,
+        bool contextLimitOnce = false) : IChatClient
     {
         public int Calls, Results;
         public void Dispose() { }
@@ -84,6 +115,8 @@ public sealed class HarnessExecutionTests
         {
             await Task.Yield();
             Calls++;
+            if (contextLimitOnce && Calls == 1)
+                throw new InvalidOperationException("The LLM request exceeds the message, text, or tool limit.");
             Results = messages.SelectMany(x => x.Contents).OfType<FunctionResultContent>().Select(x => x.CallId).Distinct().Count();
             if (promisesOnly || stopEarly && Calls == 1)
             {

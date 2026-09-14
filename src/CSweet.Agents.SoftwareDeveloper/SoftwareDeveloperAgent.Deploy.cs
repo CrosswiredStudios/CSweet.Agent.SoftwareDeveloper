@@ -93,8 +93,9 @@ public sealed partial class SoftwareDeveloperAgent
                 using var client = await DevelopmentChatClientAsync(context, ct);
                 await using var shell = SoftwareDeveloperHarness.CreateShell(root);
                 var options = SoftwareDeveloperHarness.CreateOptions(context.Identity?.DisplayName ?? "Daniel Kim", root, shell,
-                    Settings.GetString("customInstructions"), Settings.GetInt32("maxContextWindowTokens", 128000),
-                    Settings.GetInt32("maxOutputTokens", 16000));
+                    Settings.GetString("customInstructions"),
+                    Settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.MaxContextWindowTokens),
+                    Settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.MaxOutputTokens));
                 var harness = client.AsHarnessAgent(options);
                 var session = await harness.CreateSessionAsync(ct);
                 try
