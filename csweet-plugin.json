@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.6.1",
+  "version": "1.6.3",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -788,11 +788,11 @@
     {
       "key": "maximumDeploymentRepairs",
       "type": "number",
-      "label": "Maximum deployment repairs",
+      "label": "Maximum deployment repairs per failure",
       "required": false,
       "secret": false,
       "defaultValue": 2,
-      "description": "Maximum coding repair attempts following failed Docker builds or health checks. Zero disables repair."
+      "description": "Maximum coding repair attempts for the same Docker build or health-check failure. A newly revealed failure begins its own configured budget. Zero disables repair."
     },
     {
       "key": "maximumPlanRepairs",

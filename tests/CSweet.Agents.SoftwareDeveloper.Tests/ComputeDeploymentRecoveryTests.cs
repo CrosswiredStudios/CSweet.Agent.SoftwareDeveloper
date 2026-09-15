@@ -104,8 +104,50 @@ public sealed partial class ComputeDeploymentRecoveryTests
             : new { id = f.Environment, generation = 9, state = "ready", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(20) }));
         await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
         Assert.Equal("original-command", Assert.Single(commands));
-        if (unknown) { Assert.Contains("unknown", Assert.Single(f.Sent)); Assert.Equal(0, f.State.Payload.GetProperty("repairAttempt").GetInt32()); }
+        if (unknown) { Assert.Contains("safely confirm", Assert.Single(f.Sent)); Assert.Equal(0, f.State.Payload.GetProperty("repairAttempt").GetInt32()); }
         else { Assert.Empty(f.Sent); Assert.Equal(1, f.State.Payload.GetProperty("repairAttempt").GetInt32()); Assert.Equal("Code", f.State.Payload.GetProperty("stage").GetString()); }
+    }
+
+    [Fact]
+    public async Task Newly_revealed_build_failure_receives_its_own_configured_repair_budget()
+    {
+        var f = new Fixture("Deploy", new { request = new ExecuteComputeCommandRequest(Guid.NewGuid(), 9, "build-command",
+            new(Guid.NewGuid(), "/bin/sh", "/var/lib/csweet-compute/work", ["-c", "docker build ."])), stage = "Deploy", nextOffset = 100 });
+        var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
+        payload["repairAttempt"] = 2; payload["lastFailure"] = "Earlier PieceGenerator test failure";
+        f.State = f.State with { Payload = JsonSerializer.SerializeToElement(payload) };
+        f.Runtime.RegisterCapability<JsonElement, object>("compute.execute.v1", (_, _) => Task.FromResult<object>(new { id = f.Operation, status = "Completed" }))
+            .RegisterCapability<JsonElement, object>("compute.read.v1", (r, _) => Task.FromResult<object>(r.TryGetProperty("operationId", out var _operationId)
+                ? new { id = f.Operation, status = "Completed", result = (object)new { command = new { exitCode = 1, timedOut = false, standardError = Convert.ToBase64String("O-piece corner rotation failure"u8.ToArray()) } } }
+                : new { id = f.Environment, generation = 9, state = "ready", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(20) }));
+
+        await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+
+        Assert.Empty(f.Sent);
+        Assert.Equal(1, f.State.Payload.GetProperty("repairAttempt").GetInt32());
+        Assert.Equal("Code", f.State.Payload.GetProperty("stage").GetString());
+        Assert.Contains("O-piece corner rotation failure", f.State.Payload.GetProperty("lastFailure").GetString());
+    }
+
+    [Fact]
+    public async Task Repeated_identical_build_failure_stops_at_configured_repair_budget()
+    {
+        const string failure = "O-piece corner rotation failure";
+        var f = new Fixture("Deploy", new { request = new ExecuteComputeCommandRequest(Guid.NewGuid(), 9, "build-command",
+            new(Guid.NewGuid(), "/bin/sh", "/var/lib/csweet-compute/work", ["-c", "docker build ."])), stage = "Deploy", nextOffset = 100 });
+        var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
+        payload["repairAttempt"] = 2; payload["lastFailure"] = "\n" + failure;
+        f.State = f.State with { Payload = JsonSerializer.SerializeToElement(payload) };
+        f.Runtime.RegisterCapability<JsonElement, object>("compute.execute.v1", (_, _) => Task.FromResult<object>(new { id = f.Operation, status = "Completed" }))
+            .RegisterCapability<JsonElement, object>("compute.read.v1", (r, _) => Task.FromResult<object>(r.TryGetProperty("operationId", out var _operationId)
+                ? new { id = f.Operation, status = "Completed", result = (object)new { command = new { exitCode = 1, timedOut = false, standardError = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(failure)) } } }
+                : new { id = f.Environment, generation = 9, state = "ready", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(20) }));
+
+        await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+
+        Assert.Contains("repair limit", Assert.Single(f.Sent));
+        Assert.Equal(2, f.State.Payload.GetProperty("repairAttempt").GetInt32());
+        Assert.Equal("Deploy", f.State.Payload.GetProperty("stage").GetString());
     }
 
     [Fact]

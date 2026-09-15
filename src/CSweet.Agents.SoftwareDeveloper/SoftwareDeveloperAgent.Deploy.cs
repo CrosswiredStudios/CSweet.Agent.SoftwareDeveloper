@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CSweet.Agent.SDK;
 using CSweet.Agent.SDK.Compute;
 using CSweet.WorkManagement.Contracts;
@@ -29,6 +30,111 @@ public sealed partial class SoftwareDeveloperAgent
         var count = Math.Max(1, characters);
         return text.Length <= count ? text : text[^count..];
     }
+
+    internal static string DeploymentFailureFingerprint(string diagnostic) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(diagnostic)));
+
+    /// <summary>
+    /// Creates the owner-facing blocker while leaving the complete diagnostic on the retained
+    /// deployment state and compute operation. Raw build output is evidence, not a chat response.
+    /// </summary>
+    internal static string DevelopmentBlockerMessage(string error, string? retainedDiagnostic)
+    {
+        var diagnostic = string.IsNullOrWhiteSpace(retainedDiagnostic) ? error : retainedDiagnostic;
+        var failure = FirstTestFailure(diagnostic);
+
+        if (error.Contains("Compute command failed or its outcome is unknown", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"""
+Development is blocked: C-Sweet could not safely confirm the compute command outcome.
+
+### What happened
+
+The Docker build did not complete successfully. C-Sweet will not replay this command because it might already have changed the test instance.
+{FormatTestFailure(failure)}
+The source snapshot and full build log are retained in the task's technical details.
+""";
+        }
+
+        if (error.Contains("deployment repair limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"""
+Development is blocked: The same deployment failure reached its configured repair limit.
+
+### What failed
+
+Daniel stopped this task to avoid repeatedly consuming compute while the same build failure continues.
+{FormatTestFailure(failure)}
+The source snapshot and full build log are retained in the task's technical details.
+""";
+        }
+
+        if (error.Contains("compute replacement limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+Development is blocked: The configured compute replacement limit was reached.
+
+### What happened
+
+Daniel stopped this task to avoid repeatedly requesting unavailable test instances. The saved source and technical diagnostic remain available for recovery.
+""";
+        }
+
+        if (error.Contains("Docker build failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"""
+Development is blocked: Docker build validation failed.
+
+### What failed
+
+The application image did not pass its test suite.
+{FormatTestFailure(failure)}
+The source snapshot and full build log are retained in the task's technical details.
+""";
+        }
+
+        if (error.Contains("requested instance is unavailable or expired", StringComparison.OrdinalIgnoreCase))
+        {
+            return """
+Development is blocked: The requested Linux test instance is no longer available.
+
+### What happened
+
+The source commit is saved in C-Sweet. A new compute request is needed before deployment can continue.
+""";
+        }
+
+        return $"""
+Development is blocked: The development run needs attention.
+
+### What happened
+
+A required platform step did not complete. Daniel stopped this task so it does not repeat an unsafe or ambiguous action.
+
+The source snapshot and technical diagnostic are retained with the task.
+""";
+    }
+
+    private static (string Test, string Detail)? FirstTestFailure(string diagnostic)
+    {
+        var lines = diagnostic.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var match = Regex.Match(lines[index], @"^\s*FAIL\s+(?<test>.+?)\s*$", RegexOptions.CultureInvariant);
+            if (!match.Success) continue;
+
+            var detail = lines.Skip(index + 1)
+                .Select(x => x.Trim())
+                .FirstOrDefault(x => x.Length > 0 && !x.StartsWith("+", StringComparison.Ordinal) &&
+                    !x.StartsWith("-", StringComparison.Ordinal) && x is not "{" and not "}");
+            return (match.Groups["test"].Value, detail ?? "The test reported a failure.");
+        }
+        return null;
+    }
+
+    private static string FormatTestFailure((string Test, string Detail)? failure) => failure is { } value
+        ? $"\n**First failing check:** {value.Test}\n\n**Reported result:** {value.Detail}\n"
+        : "\nThe build output did not identify an individual failing check.\n";
 
     private async Task<PersonalTodoResult> AdvanceDirectWorkAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken ct)
     {
@@ -265,10 +371,18 @@ Include README instructions and test coverage for the requested behavior. The pl
                 operation = await context.Platform.Compute.ReadOperationAsync(operation.Id, ct);
                 if (operation.Status is "Blocked" or "Superseded") throw new InvalidOperationException("Compute command blocked: " + operation.FailureCode);
                 if (operation.Status != "Completed") return Wait("Waiting for compute: " + pending.Stage);
-                if (pending.Stage == "Deploy" && operation.Result is { ErrorCode: null, Command: { ExitCode: not null and not 0, TimedOut: false, ErrorCode: null } failed } && state.RepairAttempt < Settings.GetInt32("maximumDeploymentRepairs", 2))
+                if (pending.Stage == "Deploy" && operation.Result is { ErrorCode: null, Command: { ExitCode: not null and not 0, TimedOut: false, ErrorCode: null } failed })
                 {
-                    state = state with { LastFailure = DeploymentFailureExcerpt(failed.StandardOutputText, failed.StandardErrorText, Settings.GetInt32("deploymentDiagnosticCharacters", 6000)),
-                        RepairAttempt = state.RepairAttempt + 1, Pending = null, Step = state.Step + 1, Stage = "Code", Outcome = null,
+                    var diagnostic = DeploymentFailureExcerpt(failed.StandardOutputText, failed.StandardErrorText, Settings.GetInt32("deploymentDiagnosticCharacters", 6000));
+                    // Count repair attempts per reproducible failure signature. A repair for one
+                    // failing test must not consume the budget for a newly revealed test failure.
+                    var sameFailure = state.LastFailure is not null &&
+                        DeploymentFailureFingerprint(state.LastFailure) == DeploymentFailureFingerprint(diagnostic);
+                    var repairs = sameFailure ? state.RepairAttempt : 0;
+                    if (repairs >= Settings.GetInt32("maximumDeploymentRepairs", 2))
+                        throw new InvalidOperationException("The configured deployment repair limit was reached for the same build or health-check failure. Source and test results are saved; increase Maximum deployment repairs after resolving it.");
+                    state = state with { LastFailure = diagnostic,
+                        RepairAttempt = repairs + 1, Pending = null, Step = state.Step + 1, Stage = "Code", Outcome = null,
                         Publication = null, Offset = 0, BundleDigest = null, PublicationGeneration = null };
                     await SaveAsync();
                     return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "The build or health check failed. Returning to the coding model to diagnose and repair it.");
@@ -376,7 +490,7 @@ PY
         }
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
-            var reason = "Development is blocked: " + SanitizeBlocker(error.Message);
+            var reason = DevelopmentBlockerMessage(error.Message, state.LastFailure);
             if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
             return PersonalTodoResult.Blocked(reason);
         }

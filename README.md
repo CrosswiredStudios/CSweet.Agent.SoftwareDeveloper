@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.5.7`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.6.3`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -178,4 +178,4 @@ The new manifest requests work.personal-plan.create.v1 and work.personal-plan.re
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.46.0 remains the dependency for agent 1.6.1. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update.
+SDK 3.46.0 remains the dependency for agent 1.6.3. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
