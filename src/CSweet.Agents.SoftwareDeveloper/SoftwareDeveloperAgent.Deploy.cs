@@ -19,7 +19,7 @@ public sealed partial class SoftwareDeveloperAgent
         int Step = 0, string Stage = "Code", PendingDeploymentCommand? Pending = null, string? Result = null,
         long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0, CreatePersonalWorkPlanRequest? PlanRequest = null,
         Guid? ActivePlanTaskId = null, SoftwareDevelopmentOutcome? LastPlanOutcome = null,
-        int PlanRepairAttempt = 0, string? PlanFailure = null);
+        int PlanRepairAttempt = 0, string? PlanFailure = null, bool UntilReleaseRecoveryUsed = false);
     private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
     private const int DeploymentChunkBytes = 8192;
 
@@ -235,12 +235,19 @@ Include README instructions and test coverage for the requested behavior. The pl
                 // Replacement is a fresh, grant-checked compute request. Never copy network grants,
                 // and never replay an unresolved command against a different environment.
                 var maximumReplacements = Settings.GetInt32("maximumComputeReplacements", 3);
-                if (state.ReplacementAttempt >= maximumReplacements)
+                var recoverLifetimeTransition = maximumReplacements > 0 &&
+                    state.ReplacementAttempt >= maximumReplacements && !state.UntilReleaseRecoveryUsed &&
+                    Settings.GetInt32("computeLifetimeSeconds", 0) == 0 &&
+                    environment.LeaseExpiresAt != DateTimeOffset.MaxValue && environment.LeaseExpiresAt <= DateTimeOffset.UtcNow;
+                if (state.ReplacementAttempt >= maximumReplacements && !recoverLifetimeTransition)
                     throw new InvalidOperationException("The configured compute replacement limit was reached. Source and test results are saved; increase Maximum compute replacements after resolving the provider failure.");
                 if (environment.State != "destroyed")
                     return Wait("Waiting for failed or expired compute to finish cleanup before requesting its replacement.");
+                // Permit one recovery from the superseded timed policy. Keep the counter monotonic
+                // so old allocation keys cannot be reused; persist the marker with the transition
+                // before requesting compute. Neither a restart nor a ticket requeue resets it.
                 state = state with { EnvironmentId = null, ReplacementAttempt = state.ReplacementAttempt + 1, Stage = "Upload",
-                    WorkstreamId = null, TemplateId = null,
+                    WorkstreamId = null, TemplateId = null, UntilReleaseRecoveryUsed = state.UntilReleaseRecoveryUsed || recoverLifetimeTransition,
                     BundleDigest = null, Offset = 0, PublicationGeneration = null, Step = state.Step + 1 };
                 await SaveAsync();
                 await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
