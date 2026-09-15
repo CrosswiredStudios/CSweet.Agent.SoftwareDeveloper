@@ -23,6 +23,13 @@ public sealed partial class SoftwareDeveloperAgent
     private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
     private const int DeploymentChunkBytes = 8192;
 
+    internal static string DeploymentFailureExcerpt(string stdout, string stderr, int characters)
+    {
+        var text = stdout + "\n" + stderr;
+        var count = Math.Max(1, characters);
+        return text.Length <= count ? text : text[^count..];
+    }
+
     private async Task<PersonalTodoResult> AdvanceDirectWorkAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken ct)
     {
         var prefix = $"direct:{item.Id:N}";
@@ -175,7 +182,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                         PlanFailure = SanitizeBlocker(failure)
                     };
                     await SaveAsync();
-                    if (state.PlanRepairAttempt > 2)
+                    if (state.PlanRepairAttempt > Settings.GetInt32("maximumPlanRepairs", 2))
                         throw new InvalidOperationException(state.PlanFailure);
 
                     return PersonalTodoResult.WaitingUntil(
@@ -215,7 +222,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     }
                     var computeKey = state.ReplacementAttempt == 0 ? prefix : prefix + ":replacement:" + state.ReplacementAttempt;
                     var created = await context.Platform.Compute.ProvisionAsync(new(state.WorkstreamId!.Value, computeKey, computeKey + ":compute",
-                        new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), 3600)), ct);
+                        new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), ct);
                     state = state with { EnvironmentId = created.Id };
                 }
                 await SaveAsync();
@@ -251,9 +258,9 @@ Include README instructions and test coverage for the requested behavior. The pl
                 operation = await context.Platform.Compute.ReadOperationAsync(operation.Id, ct);
                 if (operation.Status is "Blocked" or "Superseded") throw new InvalidOperationException("Compute command blocked: " + operation.FailureCode);
                 if (operation.Status != "Completed") return Wait("Waiting for compute: " + pending.Stage);
-                if (pending.Stage == "Deploy" && operation.Result is { ErrorCode: null, Command: { ExitCode: not null and not 0, TimedOut: false, ErrorCode: null } failed } && state.RepairAttempt < 2)
+                if (pending.Stage == "Deploy" && operation.Result is { ErrorCode: null, Command: { ExitCode: not null and not 0, TimedOut: false, ErrorCode: null } failed } && state.RepairAttempt < Settings.GetInt32("maximumDeploymentRepairs", 2))
                 {
-                    state = state with { LastFailure = (failed.StandardErrorText + "\n" + failed.StandardOutputText)[..Math.Min(6000, failed.StandardErrorText.Length + 1 + failed.StandardOutputText.Length)],
+                    state = state with { LastFailure = DeploymentFailureExcerpt(failed.StandardOutputText, failed.StandardErrorText, Settings.GetInt32("deploymentDiagnosticCharacters", 6000)),
                         RepairAttempt = state.RepairAttempt + 1, Pending = null, Step = state.Step + 1, Stage = "Code", Outcome = null,
                         Publication = null, Offset = 0, BundleDigest = null, PublicationGeneration = null };
                     await SaveAsync();
@@ -282,7 +289,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                         !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "http" || uri.Host != "127.0.0.1")
                         throw new InvalidOperationException("The provider did not return a current verified local link.");
                     state = state with { Result = $"{state.Outcome.Summary}\n\n[Open application ↗]({url})\n\n" +
-                        $"The link opens on the compute host and expires at {expiry:O}.\n" +
+                        (expiry == DateTimeOffset.MaxValue ? "The link opens on the compute host and remains available until the instance is released or access is revoked.\n" : $"The link opens on the compute host and expires at {expiry:O}.\n") +
                         $"[View source](/organizations/{context.BusinessId}/source-control?repository={state.Publication.RepositoryId:D}&reference={Uri.EscapeDataString("refs/heads/" + state.Publication.BranchName)}) · Commit: {state.Publication.CommitSha}. Environment: {environment.Id:D}." };
                     await SaveAsync();
                     return await CompletedAsync(state.Result);
@@ -314,7 +321,17 @@ cd {guestRoot}
 printf '%s  source.tar.gz\n' '{state.BundleDigest}' | sha256sum -c -
 mkdir -p source-{state.RepairAttempt}
 tar -xzf source.tar.gz -C source-{state.RepairAttempt}
-docker build --network=none --pull=false -t {appName}:test source-{state.RepairAttempt}
+# Keep the complete diagnostic in the VM; return the failure tail within the broker output budget.
+set +e
+docker build --network=none --pull=false -t {appName}:test source-{state.RepairAttempt} > build-{state.RepairAttempt}.log 2>&1
+build_exit=$?
+set -e
+if [ "$build_exit" -ne 0 ]; then
+  printf 'Docker build failed (exit %s). Full log: %s/build-{state.RepairAttempt}.log\n' "$build_exit" "$PWD" >&2
+  tail -c {Math.Clamp(Settings.GetInt32("deploymentDiagnosticCharacters", 6000), 1, 7000)} build-{state.RepairAttempt}.log >&2
+  exit "$build_exit"
+fi
+echo 'Docker build and image tests passed.'
 # The VM is the isolation boundary. Expose only guest loopback, never the provider host.
 systemctl list-units --plain --no-legend 'csweet-hello-*.service' | tr -s ' ' | cut -d' ' -f1 | xargs -r systemctl stop
 docker ps --filter publish=8080 -q | xargs -r docker stop

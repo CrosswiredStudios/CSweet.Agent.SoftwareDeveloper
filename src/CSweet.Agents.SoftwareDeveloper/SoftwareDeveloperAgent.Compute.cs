@@ -101,7 +101,7 @@ public sealed partial class SoftwareDeveloperAgent
             }
             var environment = await context.Platform.Compute.ProvisionAsync(new(
                 terms.WorkstreamId, prefix, prefix + ":provision",
-                new ComputeSpecification("linux", "x64", terms.TemplateId, new(1, 1024, 20480), 3600)), token);
+                new ComputeSpecification("linux", "x64", terms.TemplateId, new(1, 1024, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), token);
             if (environment.State is "failed" or "destroying" or "destroyed" or "stopped" || environment.LeaseExpiresAt <= DateTimeOffset.UtcNow)
                 return await BlockAsync("The Linux test instance is unavailable or expired. " + environment.FailureCode);
             if (environment.Generation == 1 && environment.State != "ready") return Wait("Waiting for Linux provisioning.");
@@ -122,7 +122,7 @@ public sealed partial class SoftwareDeveloperAgent
             if (publication.Result is not { ErrorCode: null, Url: { } url, UrlExpiresAt: { } expiry } || expiry <= DateTimeOffset.UtcNow ||
                 !Uri.TryCreate(url, UriKind.Absolute, out var address) || address.Scheme != "http" || address.Host != "127.0.0.1")
                 return await BlockAsync("The provider did not return a current, verified test link.");
-            var summary = $"Hello World is running: {url}\nOpen this link on the compute host machine. It expires at {expiry:O}. Environment: {environment.Id:D}. Source: /var/lib/csweet-compute/work/hello/app.py inside the VM.";
+            var summary = $"Hello World is running: {url}\nOpen this link on the compute host machine. " + (expiry == DateTimeOffset.MaxValue ? "Available until the instance is released or access is revoked. " : $"It expires at {expiry:O}. ") + $"Environment: {environment.Id:D}. Source: /var/lib/csweet-compute/work/hello/app.py inside the VM.";
             if (item.SourceConversationId is { } chatId)
                 await context.Platform.Communication.SendMessageAsync(chatId, summary, prefix + ":ready", token);
             return PersonalTodoResult.Completed(summary);
@@ -161,7 +161,7 @@ HTTPServer(('127.0.0.1', 8080), App).serve_forever()
 """;
         var encoded = Convert.ToBase64String(Encoding.UTF8.GetBytes(source));
         return $"set -eu\nmkdir -p /var/lib/csweet-compute/work/hello\nprintf '%s' '{encoded}' | /usr/bin/base64 -d > /var/lib/csweet-compute/work/hello/app.py\n" +
-            $"/usr/bin/systemd-run --quiet --service-type=exec --unit=csweet-hello-{id:N} --property=RuntimeMaxSec=3600 -- /usr/bin/python3 /var/lib/csweet-compute/work/hello/app.py\n" +
+            $"/usr/bin/systemd-run --quiet --service-type=exec --unit=csweet-hello-{id:N} -- /usr/bin/python3 /var/lib/csweet-compute/work/hello/app.py\n" +
             "/usr/bin/python3 - <<'PY'\nimport time, urllib.request\nfor attempt in range(40):\n try:\n  response=urllib.request.urlopen('http://127.0.0.1:8080/', timeout=1)\n  assert b'Hello World' in response.read(4096)\n  print('Hello World HTTP health check passed')\n  break\n except Exception:\n  if attempt == 39: raise\n  time.sleep(.25)\nPY\n";
     }
 

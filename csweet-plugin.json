@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.5.8",
+  "version": "1.6.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -289,6 +289,26 @@
               },
               "customInstructions": {
                 "type": "string"
+              },
+              "computeLifetimeSeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "maximumDeploymentRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "maximumPlanRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "deploymentDiagnosticCharacters": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 6000
               }
             }
           }
@@ -331,6 +351,26 @@
               },
               "customInstructions": {
                 "type": "string"
+              },
+              "computeLifetimeSeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "maximumDeploymentRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "maximumPlanRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "deploymentDiagnosticCharacters": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 6000
               }
             }
           }
@@ -374,6 +414,26 @@
               },
               "customInstructions": {
                 "type": "string"
+              },
+              "computeLifetimeSeconds": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 0
+              },
+              "maximumDeploymentRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "maximumPlanRepairs": {
+                "type": "integer",
+                "minimum": 0,
+                "default": 2
+              },
+              "deploymentDiagnosticCharacters": {
+                "type": "integer",
+                "minimum": 1,
+                "default": 6000
               }
             }
           }
@@ -715,6 +775,42 @@
       "label": "Linux test template",
       "required": false,
       "secret": false
+    },
+    {
+      "key": "computeLifetimeSeconds",
+      "type": "number",
+      "label": "Compute lifetime in seconds",
+      "required": false,
+      "secret": false,
+      "defaultValue": 0,
+      "description": "Zero retains requested compute until explicitly released. Positive values request a timed lease, subject to platform grants."
+    },
+    {
+      "key": "maximumDeploymentRepairs",
+      "type": "number",
+      "label": "Maximum deployment repairs",
+      "required": false,
+      "secret": false,
+      "defaultValue": 2,
+      "description": "Maximum coding repair attempts following failed Docker builds or health checks. Zero disables repair."
+    },
+    {
+      "key": "maximumPlanRepairs",
+      "type": "number",
+      "label": "Maximum task validation repairs",
+      "required": false,
+      "secret": false,
+      "defaultValue": 2,
+      "description": "Maximum coding repair attempts for a planned task validation failure."
+    },
+    {
+      "key": "deploymentDiagnosticCharacters",
+      "type": "number",
+      "label": "Deployment diagnostic characters",
+      "required": false,
+      "secret": false,
+      "defaultValue": 6000,
+      "description": "Number of trailing diagnostic characters supplied to the repair model. The guest output remains within the broker transport limit."
     }
   ],
   "credentials": [],

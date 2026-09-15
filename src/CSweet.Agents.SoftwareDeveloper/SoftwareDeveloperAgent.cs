@@ -68,6 +68,10 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 minimum: 1,
                 step: 1_000,
                 defaultValue: SoftwareDeveloperHarness.DefaultOutputTokens)
+            .Number("computeLifetimeSeconds", "Compute lifetime in seconds", description: "Zero retains requested compute until explicitly released. Positive values request a timed lease, subject to platform grants.", minimum: 0, step: 1, defaultValue: 0)
+            .Number("maximumDeploymentRepairs", "Maximum deployment repairs", description: "Maximum coding repair attempts following failed Docker builds or health checks. Zero disables repair.", minimum: 0, step: 1, defaultValue: 2)
+            .Number("maximumPlanRepairs", "Maximum task validation repairs", description: "Maximum coding repair attempts for a planned task validation failure.", minimum: 0, step: 1, defaultValue: 2)
+            .Number("deploymentDiagnosticCharacters", "Deployment diagnostic characters", description: "Number of trailing diagnostic characters supplied to the repair model. The guest output remains within the broker transport limit.", minimum: 1, step: 1, defaultValue: 6000)
             .Number("maximumComputeReplacements", "Maximum compute replacements",
                 description: "Maximum replacement instances per development task after an expired or failed environment. Zero disables replacement. Network grants are never copied.",
                 minimum: 0, step: 1, defaultValue: 3)
