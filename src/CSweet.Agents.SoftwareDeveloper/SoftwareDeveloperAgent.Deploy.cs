@@ -221,17 +221,25 @@ Include README instructions and test coverage for the requested behavior. The pl
                 await SaveAsync();
             }
             var environment = await context.Platform.Compute.ReadAsync(state.EnvironmentId.Value, ct);
-            if (environment.LeaseExpiresAt <= DateTimeOffset.UtcNow && state.Pending is null && state.ReplacementAttempt == 0)
+            var needsReplacement = environment.LeaseExpiresAt <= DateTimeOffset.UtcNow ||
+                environment.State is "failed" or "destroying" or "destroyed";
+            if (needsReplacement && state.Pending is null)
             {
                 // Replacement is a fresh, grant-checked compute request. Never copy network grants,
                 // and never replay an unresolved command against a different environment.
-                state = state with { EnvironmentId = null, ReplacementAttempt = 1, Stage = "Upload",
+                var maximumReplacements = Settings.GetInt32("maximumComputeReplacements", 3);
+                if (state.ReplacementAttempt >= maximumReplacements)
+                    throw new InvalidOperationException("The configured compute replacement limit was reached. Source and test results are saved; increase Maximum compute replacements after resolving the provider failure.");
+                if (environment.State != "destroyed")
+                    return Wait("Waiting for failed or expired compute to finish cleanup before requesting its replacement.");
+                state = state with { EnvironmentId = null, ReplacementAttempt = state.ReplacementAttempt + 1, Stage = "Upload",
+                    WorkstreamId = null, TemplateId = null,
                     BundleDigest = null, Offset = 0, PublicationGeneration = null, Step = state.Step + 1 };
                 await SaveAsync();
                 await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
-                    "The original test instance expired. I have retained the source commit and will request a replacement Linux instance. Network access still requires an explicit grant.",
-                    prefix + ":instance-expired", ct);
-                return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Requesting replacement compute for the expired test instance.");
+                    "The test instance is no longer available. I have retained the source commit and will request a replacement Linux instance. Network access still requires an explicit grant.",
+                    prefix + ":instance-replacement:" + state.ReplacementAttempt, ct);
+                return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Requesting replacement compute using the retained source and test results.");
             }
             if (environment.State is "failed" or "stopped" or "destroying" or "destroyed" || environment.LeaseExpiresAt <= DateTimeOffset.UtcNow)
                 throw new InvalidOperationException("The requested instance is unavailable or expired. The source commit remains saved in C-Sweet.");
@@ -345,7 +353,7 @@ PY
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
             var reason = "Development is blocked: " + SanitizeBlocker(error.Message);
-            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + item.Revision, ct);
+            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
             return PersonalTodoResult.Blocked(reason);
         }
 

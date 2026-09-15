@@ -166,7 +166,7 @@ Review the added workspace-sync declaration during the normal update. Source tra
 
 Temporary LLM provider outages retain the development task and schedule a review after five minutes. Once the provider is available, the next review retries coding in the existing workspace. Configuration errors and denied grants still require correction.
 
-The unattended harness authorizes reads and writes only in its assigned file store. It continues incomplete coding responses for up to three turns and reports unsupported approval pauses explicitly. If a test instance expires before deployment has an unresolved command, Daniel retains the source commit and requests one replacement through the normal compute grant checks. Network grants are never copied to the replacement.
+The unattended harness authorizes reads and writes only in its assigned file store. It continues incomplete coding responses for up to three turns and reports unsupported approval pauses explicitly. If a test instance expires before deployment has an unresolved command, Daniel retains the source commit and requests a replacement through the normal compute grant checks after teardown is confirmed. The Maximum compute replacements setting bounds attempts per task (default 3, zero disables replacement), including already saved replacement attempts. Failed and destroyed environments recover through the same path; unresolved commands are retained and never replayed on another instance. Recovery refreshes platform placement defaults and preserves committed source and validation evidence. Network grants are never copied to the replacement.
 
 ## Solo MVP planning
 

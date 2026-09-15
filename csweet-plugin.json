@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.5.7",
+  "version": "1.5.8",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -284,6 +284,9 @@
               "maxOutputTokens": {
                 "type": "number"
               },
+              "maximumComputeReplacements": {
+                "type": "number"
+              },
               "customInstructions": {
                 "type": "string"
               }
@@ -323,6 +326,9 @@
                 "type": "number",
                 "minimum": 1
               },
+              "maximumComputeReplacements": {
+                "type": "number"
+              },
               "customInstructions": {
                 "type": "string"
               }
@@ -361,6 +367,9 @@
                 "type": "number"
               },
               "maxOutputTokens": {
+                "type": "number"
+              },
+              "maximumComputeReplacements": {
                 "type": "number"
               },
               "customInstructions": {
@@ -684,6 +693,14 @@
       "required": true,
       "secret": false,
       "defaultValue": 16000
+    },
+    {
+      "key": "maximumComputeReplacements",
+      "type": "number",
+      "label": "Maximum compute replacements",
+      "required": false,
+      "secret": false,
+      "defaultValue": 3
     },
     {
       "key": "computeWorkstreamId",

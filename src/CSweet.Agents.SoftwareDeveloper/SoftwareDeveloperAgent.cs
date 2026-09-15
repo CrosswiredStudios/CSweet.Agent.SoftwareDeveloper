@@ -68,6 +68,9 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 minimum: 1,
                 step: 1_000,
                 defaultValue: SoftwareDeveloperHarness.DefaultOutputTokens)
+            .Number("maximumComputeReplacements", "Maximum compute replacements",
+                description: "Maximum replacement instances per development task after an expired or failed environment. Zero disables replacement. Network grants are never copied.",
+                minimum: 0, step: 1, defaultValue: 3)
             // Preserve settings already accepted by the published installation manifest.
             // Compute placement and authorization still come from the platform broker.
             .Text("computeWorkstreamId", "Test-instance workstream",
