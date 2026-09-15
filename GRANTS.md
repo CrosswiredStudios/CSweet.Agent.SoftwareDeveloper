@@ -12,6 +12,8 @@ same-organization binding.
 | `work.item.read` | Work item | Verify the authoritative assignment and brief | Read only the assigned ticket |
 | `work.item.comment` | Work item | Attach evidence or a sanitized blocker | Bounded ticket comment |
 | `work.item.comments.read` | Work item | Consume platform-linked Architect guidance on the next attempt | Read-only correlated comments |
+| `work.item.comment.update.v1` | Work item | Correct this agent's own evidence comment | Author-scoped, revision-checked rewrite; no other subject's comment is reachable |
+| `work.item.comment.delete.v1` | Work item | Retract this agent's own evidence comment | Author-scoped soft delete; activity and audit history is retained |
 | `work.orchestration.read.v1` | Work item and sprint execution | Verify the exact stage and immutable assignment revision | Read-only execution snapshot |
 | `communication.coordination.start-work.v1` | Work item and assigned team | Ask the designated Architect one bounded technical question | Six-turn assignment-pinned session |
 | `communication.coordination.read.v1` / `communication.coordination.respond.v1` | Coordination session | Consume guidance and finalize the support outcome | No autonomous acknowledgement loop |

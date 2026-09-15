@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.6.4",
+  "version": "1.7.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -529,6 +529,16 @@
       "name": "work.item.comment",
       "scope": "work-item",
       "purpose": "Attach bounded validation evidence or a sanitized blocker to the assigned ticket"
+    },
+    {
+      "name": "work.item.comment.update.v1",
+      "scope": "work-item",
+      "purpose": "Correct this agent's own validation-evidence comment on the assigned ticket"
+    },
+    {
+      "name": "work.item.comment.delete.v1",
+      "scope": "work-item",
+      "purpose": "Retract this agent's own validation-evidence comment while its activity history is retained"
     },
     {
       "name": "work.item.comments.read",
