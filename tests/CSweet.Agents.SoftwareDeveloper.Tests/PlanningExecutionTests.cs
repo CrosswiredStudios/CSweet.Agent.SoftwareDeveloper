@@ -5,11 +5,66 @@ using System.Text.Json.Nodes;
 using CSweet.Agent.SDK;
 using CSweet.WorkManagement.Contracts;
 using Microsoft.Extensions.AI;
+using Compute = CSweet.Agent.SDK.Compute;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed partial class ComputeDeploymentRecoveryTests
 {
+    [Fact]
+    public async Task Ready_compute_still_plans_and_reserves_a_project_named_repository_before_claim()
+    {
+        var item = new PersonalTodoItem(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Matt",
+            "Build a browser game",
+            JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = "Build a polished Tetris clone.", environmentId = (Guid?)null }),
+            "Ready", "Medium", 0, 3, null, null, null, [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        var workstreamId = Guid.NewGuid();
+        var environmentId = Guid.NewGuid();
+        var states = new Dictionary<string, AgentOperatingStateResponse>(StringComparer.Ordinal);
+        var calls = new List<string>();
+        var runtime = new AgentTestRuntime()
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (request, _) => Task.FromResult(new AgentOperatingStateReadResponse(states.GetValueOrDefault(request.StateKey))))
+            .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,
+                (request, _) =>
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var response = new AgentOperatingStateResponse(Guid.NewGuid(), request.StateKey, request.SchemaId,
+                        request.SchemaVersion, request.Status, request.SourceRevisions, request.ConditionCodes,
+                        request.DecisionFingerprint, request.OpenCommitmentCorrelations, request.AttentionReviewId,
+                        request.Payload, (request.ExpectedRevision ?? 0) + 1, now, now);
+                    states[request.StateKey] = response;
+                    return Task.FromResult(response);
+                })
+            .RegisterCapability<JsonElement, Compute.ComputeDefaults>(Compute.ComputeCapabilities.Read, (_, _) =>
+                Task.FromResult(new Compute.ComputeDefaults("Ready", workstreamId, "linux-default", null)))
+            .RegisterCapability<Compute.ProvisionComputeRequest, Compute.ComputeEnvironment>(Compute.ComputeCapabilities.Provision, (_, _) =>
+                Task.FromResult(new Compute.ComputeEnvironment(environmentId, 1, 1, "ready", "ready", "retained",
+                    DateTimeOffset.UtcNow, DateTimeOffset.MaxValue, null, "software-developer-workspace")))
+            .RegisterCapability<CreatePersonalWorkPlanRequest, PersonalWorkPlan>(PersonalWorkPlanCapabilities.Create, (request, _) =>
+            {
+                calls.Add("plan");
+                Assert.Equal("Tetris Clone MVP", request.EpicTitle);
+                return Task.FromResult(new PersonalWorkPlan(item.Id, item.Revision, []));
+            })
+            .RegisterCapability<ReservePersonalRepositoryRequest, PersonalRepositoryReservation>(GitWorkspaceCapabilities.ReservePersonal, (request, _) =>
+            {
+                calls.Add("reserve");
+                Assert.Equal("Tetris Clone MVP", request.SuggestedName);
+                Assert.Equal(item.Id, request.ItemId);
+                Assert.Equal(item.Revision, request.ExpectedRevision);
+                return Task.FromResult(new PersonalRepositoryReservation(Guid.NewGuid(), "tetris-clone-mvp", "Ready", true));
+            });
+        var agent = new SoftwareDeveloperAgent(new PlanningFactory());
+        await runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
+            new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test" } });
+
+        var decision = await agent.EvaluatePersonalTodoClaimAsync(item, runtime.CreateContext(), default);
+
+        Assert.Equal(PersonalTodoClaimDecision.Claim, decision);
+        Assert.Equal(["plan", "reserve"], calls);
+    }
+
     [Fact]
     public async Task CompleteBacklogPrecedesCodingAndRestartAdvancesOnlyOneTaskWithFreshEvidence()
     {

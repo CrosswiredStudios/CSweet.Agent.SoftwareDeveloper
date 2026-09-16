@@ -99,11 +99,34 @@ public sealed class HarnessExecutionTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task Starts_a_clean_session_and_continues_from_retained_files_after_transport_interruption()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-harness-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new ScriptedClient(false, transportFailureOnce: true);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+
+            await SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Implement the ticket.", root, default);
+
+            Assert.Equal("implemented", await File.ReadAllTextAsync(Path.Combine(root, "app.txt")));
+            Assert.True(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+            Assert.Equal(4, client.Calls);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class ScriptedClient(
         bool stopEarly,
         bool promisesOnly = false,
         bool expectApproval = false,
-        bool contextLimitOnce = false) : IChatClient
+        bool contextLimitOnce = false,
+        bool transportFailureOnce = false) : IChatClient
     {
         public int Calls, Results;
         public void Dispose() { }
@@ -118,6 +141,8 @@ public sealed class HarnessExecutionTests
             Calls++;
             if (contextLimitOnce && Calls == 1)
                 throw new InvalidOperationException("The LLM request exceeds the message, text, or tool limit.");
+            if (transportFailureOnce && Calls == 1)
+                throw new HttpRequestException("Error while copying content to a stream.", new IOException("The response ended prematurely."));
             Results = messages.SelectMany(x => x.Contents).OfType<FunctionResultContent>().Select(x => x.CallId).Distinct().Count();
             if (promisesOnly || stopEarly && Calls == 1)
             {

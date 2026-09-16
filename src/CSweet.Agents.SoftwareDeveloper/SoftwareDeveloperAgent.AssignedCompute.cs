@@ -25,10 +25,10 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
         if (!RequiresDevelopmentCompute(item)) return PersonalTodoClaimDecision.Claim;
 
         var compute = await EnsureAssignedComputeAsync(context, cancellationToken);
-        if (compute.Ready) return PersonalTodoClaimDecision.Claim;
 
-        // Direct product requests may be fully planned and receive a repository reservation while
-        // the root item remains Ready. No task or workspace is started here.
+        // Direct product requests are always fully planned and receive a repository reservation
+        // before the root ticket is claimed. This keeps repository naming tied to the planned
+        // product/epic title even when assigned compute is already Ready.
         if (IsDirectWork(item))
         {
             var terms = JsonSerializer.Deserialize<DirectWorkTerms>(item.Description, SerializerOptions);
@@ -50,7 +50,7 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
                     $"direct:{item.Id:N}:reserve"), cancellationToken);
             }
         }
-        return PersonalTodoClaimDecision.Skip;
+        return compute.Ready ? PersonalTodoClaimDecision.Claim : PersonalTodoClaimDecision.Skip;
     }
 
     private static bool RequiresDevelopmentCompute(PersonalTodoItem item) =>

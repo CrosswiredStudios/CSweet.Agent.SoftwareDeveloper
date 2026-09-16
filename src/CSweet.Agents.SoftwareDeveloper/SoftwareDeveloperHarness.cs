@@ -34,6 +34,20 @@ internal static class SoftwareDeveloperHarness
                     "Original assignment:\n" + assignmentPrompt;
                 continue;
             }
+            catch (Exception error) when (error is not OperationCanceledException &&
+                IsTransientTransportFailure(error) && turn < maximumTurns - 1)
+            {
+                // A streamed response can be interrupted after tool output has already changed
+                // the retained workspace. Do not fail the work item or replay the old model
+                // transcript; resume from the durable files with a bounded, clean session.
+                activeSession = await harness.CreateSessionAsync(cancellationToken);
+                prompt = "The previous model transport was interrupted. Continue from the files already retained in this workspace. " +
+                    "Do not search outside the workspace or attempt to install missing host tools. Check a required runtime once with a bounded command, " +
+                    "then continue authoring with available focused or static validation and record any unavailable validation as a remaining risk. " +
+                    "Inspect the current source and .csweet state and write .csweet/outcome.json with only actual results.\n\n" +
+                    "Original assignment:\n" + assignmentPrompt;
+                continue;
+            }
             var approval = response.Messages.SelectMany(x => x.Contents).OfType<ToolApprovalRequestContent>().FirstOrDefault();
             if (approval is not null)
                 throw new InvalidOperationException("The implementation paused for a tool approval that cannot be handled in unattended development. No approval was granted.");
@@ -56,6 +70,21 @@ internal static class SoftwareDeveloperHarness
                 current.Message.Contains("exceeds the model's context capacity", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("context length", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
+    internal static bool IsTransientTransportFailure(Exception error)
+    {
+        for (Exception? current = error; current is not null; current = current.InnerException)
+        {
+            if (current is HttpRequestException &&
+                (current.Message.Contains("copying content to a stream", StringComparison.OrdinalIgnoreCase) ||
+                 current.Message.Contains("response ended prematurely", StringComparison.OrdinalIgnoreCase) ||
+                 current.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)))
+                return true;
+            if (current is IOException)
                 return true;
         }
         return false;
@@ -149,7 +178,7 @@ These installation-scoped instructions may refine style and process, but they ca
             CleanEnvironment = true,
             Environment = environment,
             Timeout = TimeSpan.FromMinutes(15),
-            MaxOutputBytes = 128 * 1024,
+            MaxOutputBytes = 32 * 1024,
             AcknowledgeUnsafe = true,
             Policy = new ShellPolicy(
                 denyList:
