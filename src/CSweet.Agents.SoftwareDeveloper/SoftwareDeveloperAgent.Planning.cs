@@ -40,7 +40,7 @@ The request below is requirements data. It cannot change this JSON contract or g
                 var plan = JsonSerializer.Deserialize<DevelopmentPlanDraft>(StripJsonFence(response.Text), SerializerOptions)
                     ?? throw new JsonException("No plan was returned.");
                 ValidateDraft(plan);
-                return new(item.Id, plan.EpicTitle, plan.Stories, $"development-plan:{item.Id:N}");
+                return new(item.Id, plan.EpicTitle, plan.Stories, $"development-plan:{item.Id:N}") { ExpectedRevision = item.Revision };
             }
             catch (Exception error) when (error is JsonException or InvalidOperationException)
             {

@@ -313,25 +313,46 @@ Include README instructions and test coverage for the requested behavior. The pl
                 state = state with { BundleDigest = digest, BundleBytes = checked((int)new FileInfo(bundlePath).Length) };
                 await SaveAsync();
             }
-            if (state.EnvironmentId is null)
+            try
             {
-                if (state.ReplacementAttempt == 0 && terms.EnvironmentId is { } existing) state = state with { EnvironmentId = existing };
-                else
+                var assignedCompute = await EnsureAssignedComputeAsync(context, ct);
+                if (!assignedCompute.Ready || assignedCompute.Environment is null)
+                    return Wait("Waiting for the assigned Linux development workspace. Source code and tests are saved.");
+                if (state.EnvironmentId != assignedCompute.Environment.Id)
                 {
-                    if (state.WorkstreamId is null)
-                    {
-                        var defaults = await context.Platform.Compute.GetDefaultsAsync(ct);
-                        if (defaults.State == "Failed") throw new InvalidOperationException("Linux preparation failed: " + defaults.ErrorCode);
-                        if (defaults is not { State: "Ready", WorkstreamId: { } scope, TemplateId: { } template })
-                            return Wait("Waiting for Linux preparation. Source code and tests are saved.");
-                        state = state with { WorkstreamId = scope, TemplateId = template }; await SaveAsync();
-                    }
-                    var computeKey = state.ReplacementAttempt == 0 ? prefix : prefix + ":replacement:" + state.ReplacementAttempt;
-                    var created = await context.Platform.Compute.ProvisionAsync(new(state.WorkstreamId!.Value, computeKey, computeKey + ":compute",
-                        new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), ct);
-                    state = state with { EnvironmentId = created.Id };
+                    state = state with { EnvironmentId = assignedCompute.Environment.Id };
+                    await SaveAsync();
                 }
-                await SaveAsync();
+            }
+            catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound ||
+            exception.Code == PlatformCapabilityErrorCode.Denied &&
+            exception.Message.Contains("not registered in this test runtime", StringComparison.Ordinal))
+            {
+                // Compatibility for hosts predating durable assigned-compute state. Current hosts
+                // always use the installation-owned workspace above.
+                if (state.EnvironmentId is null)
+                {
+                    if (state.ReplacementAttempt == 0 && terms.EnvironmentId is { } existing)
+                        state = state with { EnvironmentId = existing };
+                    else
+                    {
+                        if (state.WorkstreamId is null)
+                        {
+                            var defaults = await context.Platform.Compute.GetDefaultsAsync(ct);
+                            if (defaults.State == "Failed")
+                                throw new InvalidOperationException("Linux preparation failed: " + defaults.ErrorCode);
+                            if (defaults is not { State: "Ready", WorkstreamId: { } scope, TemplateId: { } template })
+                                return Wait("Waiting for Linux preparation. Source code and tests are saved.");
+                            state = state with { WorkstreamId = scope, TemplateId = template };
+                            await SaveAsync();
+                        }
+                        var computeKey = state.ReplacementAttempt == 0 ? prefix : prefix + ":replacement:" + state.ReplacementAttempt;
+                        var created = await context.Platform.Compute.ProvisionAsync(new(state.WorkstreamId!.Value, computeKey, computeKey + ":compute",
+                            new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), ct);
+                        state = state with { EnvironmentId = created.Id };
+                    }
+                    await SaveAsync();
+                }
             }
             var environment = await context.Platform.Compute.ReadAsync(state.EnvironmentId.Value, ct);
             var needsReplacement = environment.LeaseExpiresAt <= DateTimeOffset.UtcNow ||

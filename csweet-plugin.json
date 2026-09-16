@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -673,6 +673,23 @@
       "modelVisible": false
     },
     {
+      "name": "agent.onboarding.complete.v1",
+      "scope": "organization",
+      "purpose": "Acknowledge onboarding only after Daniel has requested compute and sent his introduction.",
+      "modelVisible": false
+    },
+    {
+      "name": "communication.chat.create.v1",
+      "scope": "organization",
+      "purpose": "Create or reuse a direct chat with the assigned manager for one compute blocker message per incident.",
+      "modelVisible": false
+    },
+    {
+      "name": "source-control.personal-work.reserve.v1",
+      "scope": "organization",
+      "purpose": "Reserve a concise private repository for an owned Ready development ticket without starting implementation.",
+      "modelVisible": false
+    },    {
       "name": "source-control.personal-work.prepare.v1",
       "scope": "organization",
       "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
@@ -717,6 +734,7 @@
   ],
   "events": {
     "subscribes": [
+      "com.csweet.agent.onboarded.v1",
       "com.csweet.calendar.reminder-due.v1",
       "com.csweet.work.personal-todo.available.v1",
       "com.csweet.communication.message.mentioned.v1",

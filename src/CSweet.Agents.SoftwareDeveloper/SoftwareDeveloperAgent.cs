@@ -164,6 +164,28 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
                 "Configure an approved LLM provider and model before assigning implementation work.");
         }
 
+        try
+        {
+            var assignedCompute = await EnsureAssignedComputeAsync(context, cancellationToken);
+            if (!assignedCompute.Ready)
+                return AgentWorkResult.Failure(
+                    "The assigned Linux development workspace is not Ready. Planning may continue, but development cannot start.",
+                    "compute-unavailable", retryable: true);
+        }
+        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound ||
+            exception.Code == PlatformCapabilityErrorCode.Denied &&
+            exception.Message.Contains("not registered in this test runtime", StringComparison.Ordinal))
+        {
+            // Compatibility for hosts predating durable assigned-compute state.
+        }
+        catch (PlatformCapabilityException exception)
+        {
+            _logger.LogWarning(exception, "Assigned compute gate rejected development capability {Capability}.", request.Capability);
+            return AgentWorkResult.Failure(
+                "The assigned Linux development workspace is unavailable. Planning may continue, but development cannot start.",
+                "compute-unavailable", retryable: true);
+        }
+
         var maxContextWindowTokens = Settings.GetInt32(
             "maxContextWindowTokens",
             SoftwareDeveloperHarness.DefaultContextWindowTokens);
@@ -338,6 +360,18 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
             throw new InvalidOperationException(
                 "The platform returned an invalid or unavailable assignment workspace.");
 
+        try
+        {
+            var assignedCompute = await EnsureAssignedComputeAsync(context, cancellationToken);
+            if (!assignedCompute.Ready)
+                throw new InvalidOperationException("compute-unavailable: the assigned Linux development workspace is not Ready.");
+        }
+        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound ||
+            exception.Code == PlatformCapabilityErrorCode.Denied &&
+            exception.Message.Contains("not registered in this test runtime", StringComparison.Ordinal))
+        {
+            // Compatibility for hosts predating durable assigned-compute state.
+        }
         var maxContextWindowTokens = Settings.GetInt32(
             "maxContextWindowTokens",
             SoftwareDeveloperHarness.DefaultContextWindowTokens);
