@@ -476,30 +476,34 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
             outcome.Validations);
     }
 
-    private static async Task<SoftwareDevelopmentOutcome> ReadOutcomeAsync(
+    internal sealed class ImplementationOutcomeException(string message) : InvalidOperationException(message);
+
+    internal static async Task<SoftwareDevelopmentOutcome> ReadOutcomeAsync(
         string workspacePath,
         CancellationToken cancellationToken)
     {
         var path = Path.GetFullPath(Path.Combine(workspacePath, ".csweet", "outcome.json"));
-        if (!path.StartsWith(
-                workspacePath + Path.DirectorySeparatorChar,
-                StringComparison.Ordinal) ||
-            !File.Exists(path))
-            throw new InvalidOperationException(
-                "The harness did not produce .csweet/outcome.json.");
+        if (!path.StartsWith(workspacePath + Path.DirectorySeparatorChar, StringComparison.Ordinal) || !File.Exists(path))
+            throw new ImplementationOutcomeException("The completion report .csweet/outcome.json is missing.");
         SoftwareDevelopmentOutcome? outcome;
-        await using (var stream = File.OpenRead(path))
+        try
         {
-            outcome = await JsonSerializer.DeserializeAsync<SoftwareDevelopmentOutcome>(
-                stream,
-                new JsonSerializerOptions(JsonSerializerDefaults.Web),
-                cancellationToken);
+            // File tools may write a UTF-8 BOM. Treat it as an encoding marker.
+            var json = await File.ReadAllTextAsync(path, cancellationToken);
+            outcome = JsonSerializer.Deserialize<SoftwareDevelopmentOutcome>(json, SerializerOptions);
         }
-        if (outcome is null ||
-            string.IsNullOrWhiteSpace(outcome.Summary) ||
-            outcome.ChangedFiles.Count == 0)
-            throw new InvalidOperationException(
-                "The structured implementation outcome is incomplete.");
+        catch (JsonException)
+        {
+            throw new ImplementationOutcomeException(
+                "The completion report .csweet/outcome.json must contain valid JSON with summary, changedFiles, and validations fields.");
+        }
+        if (outcome is null || string.IsNullOrWhiteSpace(outcome.Summary))
+            throw new ImplementationOutcomeException("The completion report requires a nonempty summary of what was implemented or verified.");
+        if (outcome.ChangedFiles is null || outcome.ChangedFiles.Any(string.IsNullOrWhiteSpace))
+            throw new ImplementationOutcomeException("The completion report requires a changedFiles array of file paths; use [] when retained work already satisfies the task.");
+        if (outcome.Validations is null || outcome.Validations.Count == 0 ||
+            outcome.Validations.Any(x => x is null || string.IsNullOrWhiteSpace(x.Command)))
+            throw new ImplementationOutcomeException("The completion report requires validations with the commands actually run and their real results, including for unchanged work.");
         File.Delete(path);
         return outcome;
     }
@@ -534,6 +538,8 @@ Run focused validation and then the broadest relevant validation that fits the a
 
 Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
 {"summary":"...","changedFiles":["path"],"validations":[{"command":"...","succeeded":true,"exitCode":0,"diagnosticExcerpt":null}],"remainingRisks":[]}
+If retained files already satisfy the ticket, use "changedFiles":[], explain what was verified in summary,
+and record fresh relevant validation. Do not invent edits merely to report changed files.
 Every validation entry must reflect a command you actually ran and its real exit code. Exclude
 secrets, environment dumps, authorization-bearing URLs, and unbounded command output.
 

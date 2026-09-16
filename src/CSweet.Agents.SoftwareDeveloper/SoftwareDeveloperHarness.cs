@@ -11,7 +11,8 @@ internal static class SoftwareDeveloperHarness
     internal const int MaximumIterationsPerRequest = 48;
 
     internal static async Task RunImplementationAsync(
-        AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken)
+        AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
+        Func<CancellationToken, Task>? checkpoint = null)
     {
         const int maximumTurns = 6;
         var assignmentPrompt = prompt;
@@ -21,7 +22,17 @@ internal static class SoftwareDeveloperHarness
             AgentResponse response;
             try
             {
-                response = await harness.RunAsync(prompt, activeSession, options: null, cancellationToken);
+                try
+                {
+                    response = await harness.RunAsync(prompt, activeSession, options: null, cancellationToken);
+                }
+                catch (Exception error) when (error is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    // A provider/transport failure can occur after file tools have already edited source.
+                    // Upload before either starting a fresh session or returning the failure to the host.
+                    if (checkpoint is not null) await checkpoint(cancellationToken);
+                    throw;
+                }
             }
             catch (Exception error) when (error is not OperationCanceledException &&
                 IsContextCapacityFailure(error) && turn < maximumTurns - 1)
@@ -52,6 +63,7 @@ internal static class SoftwareDeveloperHarness
             if (approval is not null)
                 throw new InvalidOperationException("The implementation paused for a tool approval that cannot be handled in unattended development. No approval was granted.");
             if (File.Exists(Path.Combine(workspacePath, ".csweet", "outcome.json"))) return;
+            if (checkpoint is not null) await checkpoint(cancellationToken);
             var finalizationTurn = turn == maximumTurns - 2;
             prompt = finalizationTurn
                 ? "Finalization is required now. Inspect the current workspace, run the focused validation needed for this ticket, and write .csweet/outcome.json with the actual results. Do not stop after describing the next step."

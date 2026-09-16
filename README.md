@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.8.3`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.8.4`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -178,4 +178,30 @@ The new manifest requests work.personal-plan.create.v1 and work.personal-plan.re
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.8.3. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.8.4. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+
+
+## Completion and interruption recovery (1.8.4)
+
+`SoftwareDeveloperAgent.ReadOutcomeAsync` accepts an explicit empty `changedFiles` array when
+retained work already satisfies the current ticket. A nonempty summary and fresh, named validation
+results are still required, and failed checks still block completion. Missing/null fields and malformed
+JSON produce specific completion-report errors. UTF-8 BOMs from file tools are accepted.
+
+`AdvanceDirectWorkAsync` saves accepted planned-task evidence in `DeploymentState.PlanCompletion`
+only after uploading its source snapshot. Publication uses the saved task identity and revision;
+the publication result is saved before reporting task completion. A retry resumes these platform
+steps without another coding-model run, even in a fresh runtime. Evidence from one task is never
+used to finish the next task. Existing 1.8.3 state remains readable.
+
+`SoftwareDeveloperHarness.RunImplementationAsync` checkpoints partial source through the existing
+authorized workspace upload after incomplete turns and non-cancellation model failures, before
+continuing or surfacing the error. Cancellation does not upload under an expired/revoked lease;
+an abrupt process loss can still lose edits since the last completed upload.
+
+The authoring runtime may lack Node. Python static checks do not execute the Node server, and
+Docker build/HTTP deployment does not automatically run Node tests. The agent must record these
+checks as unexecuted risks. This release does not install Node or change compute authority.
+
+Update Daniel to 1.8.4 using the normal agent update flow, then resume the blocked epic if the update
+has not already requeued it. Its saved source, plan, and completed children are reused.

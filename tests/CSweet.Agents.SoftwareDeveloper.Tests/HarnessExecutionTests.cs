@@ -121,6 +121,56 @@ public sealed class HarnessExecutionTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Checkpoints_edits_before_recovering_or_returning_a_provider_failure(bool transient)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-harness-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new InterruptedClient(transient);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            string? retained = null;
+            Task RunAsync() => SoftwareDeveloperHarness.RunImplementationAsync(harness, session, "Implement the ticket.", root,
+                default, async ct => retained = await File.ReadAllTextAsync(Path.Combine(root, "partial.txt"), ct));
+            if (transient) await RunAsync();
+            else await Assert.ThrowsAsync<InvalidOperationException>(RunAsync);
+            Assert.Equal("Retain these edits", retained);
+            Assert.Equal(transient, File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    private sealed class InterruptedClient(bool transient) : IChatClient
+    {
+        private int _calls;
+        public void Dispose() { }
+        public object? GetService(Type type, object? key = null) => null;
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            GetStreamingResponseAsync(messages, options, cancellationToken).ToChatResponseAsync(cancellationToken);
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,
+            ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            var call = ++_calls;
+            if (call == 2)
+            {
+                if (transient) throw new HttpRequestException("The connection was interrupted.");
+                throw new InvalidOperationException("The inference provider has no model loaded.");
+            }
+            if (call is 1 or 3)
+                yield return new(ChatRole.Assistant, [new FunctionCallContent("write-" + call, "file_access_write",
+                    new Dictionary<string, object?> { ["fileName"] = call == 1 ? "partial.txt" : ".csweet/outcome.json",
+                        ["content"] = call == 1 ? "Retain these edits" : "{}", ["overwrite"] = true })]);
+            else yield return new(ChatRole.Assistant, "Complete.");
+        }
+    }
+
     private sealed class ScriptedClient(
         bool stopEarly,
         bool promisesOnly = false,
