@@ -45,7 +45,14 @@ public sealed partial class ComputeDeploymentRecoveryTests
                     Assert.InRange(nextReview!.Value - DateTimeOffset.UtcNow, TimeSpan.FromMinutes(4), TimeSpan.FromMinutes(5));
                     Assert.Empty(f.Sent);
                 }
-                else { Assert.Null(nextReview); Assert.Contains("blocked", Assert.Single(f.Sent)); }
+                else
+                {
+                    Assert.Null(nextReview);
+                    var blocker = Assert.Single(f.Sent);
+                    Assert.Contains("Provider unavailable", blocker);
+                    Assert.Contains(PlatformCapabilities.LlmChatStream, blocker);
+                    Assert.Contains("Restore model access", blocker);
+                }
                 Assert.False(Directory.Exists(root));
                 Assert.Equal(workspaceId, f.State.Payload.GetProperty("workspace").GetProperty("workspaceId").GetGuid());
             }

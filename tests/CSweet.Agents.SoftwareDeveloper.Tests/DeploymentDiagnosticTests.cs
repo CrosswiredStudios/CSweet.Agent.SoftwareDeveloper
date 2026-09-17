@@ -37,4 +37,52 @@ public class DeploymentDiagnosticTests
         Assert.Contains("O-piece can rotate freely", message);
         Assert.DoesNotContain("PASS other test", message);
     }
+    [Fact]
+    public void Unknown_failure_preserves_current_error_and_does_not_reuse_stale_build_failure()
+    {
+        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+            new InvalidOperationException("Ticket update interrupted"),
+            "FAIL old unrelated test\nOld failure", "Recording task completion");
+        Assert.Contains("Ticket update interrupted", message);
+        Assert.Contains("Recording task completion", message);
+        Assert.Contains("### Next step", message);
+        Assert.Contains("To Do", message);
+        Assert.DoesNotContain("old unrelated", message);
+        Assert.DoesNotContain("source snapshot", message);
+    }
+
+    [Fact]
+    public void Platform_failure_identifies_capability_code_and_required_authorization_fix()
+    {
+        var error = new CSweet.Agent.SDK.PlatformCapabilityException("git.workspace.publish.v1",
+            CSweet.Agent.SDK.PlatformCapabilityErrorCode.Denied, "Repository grant is missing",
+            failureCode: "grant.missing");
+        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(error, null, "Publishing checkpoint");
+        Assert.Contains("git.workspace.publish.v1", message);
+        Assert.Contains("grant.missing", message);
+        Assert.Contains("Repository grant is missing", message);
+        Assert.Contains("resource scope", message);
+        Assert.Contains("To Do", message);
+    }
+
+    [Fact]
+    public void Unknown_compute_outcome_does_not_invent_a_build_or_test_failure()
+    {
+        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+            "Compute command failed or its outcome is unknown", null);
+        Assert.Contains("confirm whether it ran", message);
+        Assert.DoesNotContain("Docker build", message);
+        Assert.DoesNotContain("test suite", message);
+    }
+
+    [Fact]
+    public void Diagnostic_is_bounded_and_removes_credentials_paths_and_stack_traces()
+    {
+        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+            "Request rejected: token=secret123 password=pass456 api_key=key789 Bearer bearer123 https://example.test/?secret=urlsecret /var/lib/private/log C:\\private\\log\n   at Secret.Internal.Method()\n" + new string('x', 5000), null);
+        foreach (var secret in new[] { "secret123", "pass456", "key789", "bearer123", "urlsecret", "/var/lib", "C:\\private", "Secret.Internal" })
+            Assert.DoesNotContain(secret, message);
+        Assert.Contains("Request rejected", message);
+        Assert.True(message.Length < 2500);
+    }
 }

@@ -3,7 +3,6 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using CSweet.Agent.SDK;
 using CSweet.Agent.SDK.Compute;
 using CSweet.WorkManagement.Contracts;
@@ -37,110 +36,9 @@ public sealed partial class SoftwareDeveloperAgent
     internal static string DeploymentFailureFingerprint(string diagnostic) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(diagnostic)));
 
-    /// <summary>
-    /// Creates the owner-facing blocker while leaving the complete diagnostic on the retained
-    /// deployment state and compute operation. Raw build output is evidence, not a chat response.
-    /// </summary>
-    internal static string DevelopmentBlockerMessage(string error, string? retainedDiagnostic)
-    {
-        var diagnostic = string.IsNullOrWhiteSpace(retainedDiagnostic) ? error : retainedDiagnostic;
-        var failure = FirstTestFailure(diagnostic);
-
-        if (error.Contains("Compute command failed or its outcome is unknown", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"""
-Development is blocked: C-Sweet could not safely confirm the compute command outcome.
-
-### What happened
-
-The Docker build did not complete successfully. C-Sweet will not replay this command because it might already have changed the test instance.
-{FormatTestFailure(failure)}
-The source snapshot and full build log are retained in the task's technical details.
-""";
-        }
-
-        if (error.Contains("deployment repair limit", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"""
-Development is blocked: The same deployment failure reached its configured repair limit.
-
-### What failed
-
-Daniel stopped this task to avoid repeatedly consuming compute while the same build failure continues.
-{FormatTestFailure(failure)}
-The source snapshot and full build log are retained in the task's technical details.
-""";
-        }
-
-        if (error.Contains("compute replacement limit", StringComparison.OrdinalIgnoreCase))
-        {
-            return """
-Development is blocked: The configured compute replacement limit was reached.
-
-### What happened
-
-Daniel stopped this task to avoid repeatedly requesting unavailable test instances. The saved source and technical diagnostic remain available for recovery.
-""";
-        }
-
-        if (error.Contains("Docker build failed", StringComparison.OrdinalIgnoreCase))
-        {
-            return $"""
-Development is blocked: Docker build validation failed.
-
-### What failed
-
-The application image did not pass its test suite.
-{FormatTestFailure(failure)}
-The source snapshot and full build log are retained in the task's technical details.
-""";
-        }
-
-        if (error.Contains("requested instance is unavailable or expired", StringComparison.OrdinalIgnoreCase))
-        {
-            return """
-Development is blocked: The requested Linux test instance is no longer available.
-
-### What happened
-
-The source commit is saved in C-Sweet. A new compute request is needed before deployment can continue.
-""";
-        }
-
-        return $"""
-Development is blocked: The development run needs attention.
-
-### What happened
-
-A required platform step did not complete. Daniel stopped this task so it does not repeat an unsafe or ambiguous action.
-
-The source snapshot and technical diagnostic are retained with the task.
-""";
-    }
-
-    private static (string Test, string Detail)? FirstTestFailure(string diagnostic)
-    {
-        var lines = diagnostic.Replace("\r", string.Empty, StringComparison.Ordinal).Split('\n');
-        for (var index = 0; index < lines.Length; index++)
-        {
-            var match = Regex.Match(lines[index], @"^\s*FAIL\s+(?<test>.+?)\s*$", RegexOptions.CultureInvariant);
-            if (!match.Success) continue;
-
-            var detail = lines.Skip(index + 1)
-                .Select(x => x.Trim())
-                .FirstOrDefault(x => x.Length > 0 && !x.StartsWith("+", StringComparison.Ordinal) &&
-                    !x.StartsWith("-", StringComparison.Ordinal) && x is not "{" and not "}");
-            return (match.Groups["test"].Value, detail ?? "The test reported a failure.");
-        }
-        return null;
-    }
-
-    private static string FormatTestFailure((string Test, string Detail)? failure) => failure is { } value
-        ? $"\n**First failing check:** {value.Test}\n\n**Reported result:** {value.Detail}\n"
-        : "\nThe build output did not identify an individual failing check.\n";
-
     private async Task<PersonalTodoResult> AdvanceDirectWorkAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken ct)
     {
+        var currentStep = "Reading the retained development request";
         var prefix = $"direct:{item.Id:N}";
         var stateKey = $"development/task/{item.Id:N}";
         var retained = await context.Platform.ReadOperatingStateAsync<DeploymentState>(stateKey, ct);
@@ -159,6 +57,7 @@ The source snapshot and technical diagnostic are retained with the task.
                     state = state with { PlanRequest = await PlanDevelopmentAsync(item, terms, context, ct) };
                     await SaveAsync();
                 }
+                currentStep = "Loading the development plan";
                 var plan = await context.Platform.PersonalTodo.CreatePlanAsync(state.PlanRequest, ct);
                 planTask = plan.Items.OrderBy(x => x.Rank).FirstOrDefault(x =>
                     x.Kind == "Task" && x.PlanRootId == item.Id && x.Status != PersonalTodoStatuses.Completed);
@@ -189,6 +88,7 @@ The source snapshot and technical diagnostic are retained with the task.
             if (needsFiles)
             {
                 var lostLocalFiles = !Directory.Exists(PlatformGitWorkspaceClient.LocalWorkspacePath(workspace.WorkspaceId));
+                currentStep = "Restoring the task source workspace";
                 workspace = await context.Platform.Git.MaterializeAsync(workspace, 1, ct);
                 state = state with { Workspace = workspace };
                 if (lostLocalFiles && state.Pending is null && state.Stage != "Publish")
@@ -289,7 +189,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     {
                         if (invalidReport)
                             throw new ImplementationOutcomeException(state.PlanFailure);
-                        throw new InvalidOperationException(state.PlanFailure);
+                        throw new PlanValidationException(state.PlanFailure);
                     }
 
                     return PersonalTodoResult.WaitingUntil(
@@ -303,6 +203,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     throw new InvalidOperationException("The saved completion evidence belongs to another planned task.");
                 if (completion.Checkpoint is null)
                 {
+                    currentStep = "Publishing the verified task checkpoint";
                     var checkpoint = await context.Platform.Git.PublishAsync(new(workspace.WorkspaceId, 1,
                         "Complete " + planTask.Title, item.Title,
                         $"Completed planned task: {planTask.Title}\n\n{completion.Outcome.Summary}",
@@ -318,6 +219,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 var evidence = completion.Outcome.Summary + "\n" +
                     string.Join("\n", completion.Outcome.Validations.Select(x => $"{x.Command}: exit {x.ExitCode}")) +
                     $"\nCheckpoint: {completion.Checkpoint.BranchName} @ {completion.Checkpoint.CommitSha}";
+                currentStep = "Recording verified task completion";
                 await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id, planTask.Revision,
                     "Completed", evidence.Length <= 4096 ? evidence : evidence[..4096],
                     $"plan-complete:{planTask.Id:N}:{planTask.Revision}"), ct);
@@ -347,6 +249,7 @@ Include README instructions and test coverage for the requested behavior. The pl
             }
             try
             {
+                currentStep = "Preparing the assigned Linux test instance";
                 var assignedCompute = await EnsureAssignedComputeAsync(context, ct);
                 if (!assignedCompute.Ready || assignedCompute.Environment is null)
                     return Wait("Waiting for the assigned Linux development workspace. Source code and tests are saved.");
@@ -386,6 +289,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     await SaveAsync();
                 }
             }
+            currentStep = "Reading the Linux test instance status";
             var environment = await context.Platform.Compute.ReadAsync(state.EnvironmentId.Value, ct);
             var needsReplacement = environment.LeaseExpiresAt <= DateTimeOffset.UtcNow ||
                 environment.State is "failed" or "destroying" or "destroyed";
@@ -420,6 +324,7 @@ Include README instructions and test coverage for the requested behavior. The pl
             {
                 // Exact command terms are saved before dispatch. A lost response replays the same
                 // request ID, generation and payload; it never starts a second command.
+                currentStep = $"Checking the {pending.Stage} compute command";
                 var operation = await context.Platform.Compute.ExecuteAsync(pending.Request, ct);
                 operation = await context.Platform.Compute.ReadOperationAsync(operation.Id, ct);
                 if (operation.Status is "Blocked" or "Superseded") throw new InvalidOperationException("Compute command blocked: " + operation.FailureCode);
@@ -456,6 +361,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 try
                 {
                     if (state.PublicationGeneration is null) { state = state with { PublicationGeneration = environment.Generation }; await SaveAsync(); }
+                    currentStep = "Publishing the application test link";
                     var publication = await context.Platform.Compute.PublishPortAsync(new(environment.Id, state.PublicationGeneration.Value,
                         (state.ReplacementAttempt == 0 ? prefix + ":port" : prefix + ":port:" + state.ReplacementAttempt), 8080), ct);
                     publication = await context.Platform.Compute.ReadOperationAsync(publication.Id, ct);
@@ -533,6 +439,7 @@ PY
                 var request = new ExecuteComputeCommandRequest(environment.Id, environment.Generation, $"{prefix}:cmd:{state.Step}",
                     new(commandId, "/bin/sh", "/var/lib/csweet-compute/work", ["-c", script]));
                 state = state with { Pending = new(request, stage, offset) }; await SaveAsync();
+                currentStep = $"Starting the {stage} compute command";
                 await context.Platform.Compute.ExecuteAsync(request, ct);
                 return Wait(stage == "Upload" ? $"Transferring committed source to compute ({offset * 100 / state.BundleBytes}%)." : "Building and starting the Docker application, then checking HTTP health.");
             }
@@ -545,15 +452,17 @@ PY
         }
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
-            var reason = error is ImplementationOutcomeException
-                ? $"Development is blocked: The completion report could not be accepted.\n\n{error.Message}\n\nThe configured task repair attempts are exhausted. Correct the report and retry; the saved source is retained."
-                : DevelopmentBlockerMessage(error.Message, state.LastFailure);
+            var reason = DevelopmentBlockerMessage(error, state.LastFailure, currentStep);
             if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
             return PersonalTodoResult.Blocked(reason);
         }
 
         async Task SaveAsync() => retained = await SaveDevelopmentStateAsync(stateKey, state, retained, item.Id, context, ct);
-        Task ProgressAsync(string message) => context.ReportProgressAsync(new { stage = "development", itemId = item.Id, message }, ct);
+        Task ProgressAsync(string message)
+        {
+            currentStep = message;
+            return context.ReportProgressAsync(new { stage = "development", itemId = item.Id, message }, ct);
+        }
         PersonalTodoResult Wait(string reason) => PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), reason);
         async Task<PersonalTodoResult> CompletedAsync(string summary)
         {

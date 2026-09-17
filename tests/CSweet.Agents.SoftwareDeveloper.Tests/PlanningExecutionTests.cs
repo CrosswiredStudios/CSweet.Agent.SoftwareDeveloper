@@ -65,8 +65,10 @@ public sealed partial class ComputeDeploymentRecoveryTests
         Assert.Equal(["plan", "reserve"], calls);
     }
 
-    [Fact]
-    public async Task CompleteBacklogPrecedesCodingAndRestartAdvancesOnlyOneTaskWithFreshEvidence()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CompleteBacklogPrecedesCodingAndRestartAdvancesOnlyOneTaskWithFreshEvidence(bool exhaustRepairBudget)
     {
         var f = new Fixture("Code");
         var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
@@ -134,7 +136,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             {
                 var agent = new SoftwareDeveloperAgent(factory); // Simulate a runtime restart between tasks.
                 await f.Runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
-                    new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test" } });
+                    new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test", maximumPlanRepairs = exhaustRepairBudget ? 0 : 2 } });
                 await agent.HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
                 if (callback == 0)
                 {
@@ -151,7 +153,15 @@ public sealed partial class ComputeDeploymentRecoveryTests
             Assert.Equal(2, pushes);
             Assert.Equal(1, checkpoints);
             Assert.Equal("Running", tasks[1].Status);
-            Assert.Empty(f.Sent);
+            if (exhaustRepairBudget)
+            {
+                var blocker = Assert.Single(f.Sent);
+                Assert.Contains("Task validation failed", blocker);
+                Assert.Contains("fixture-test", blocker);
+                Assert.Contains("assertion failed", blocker);
+                Assert.Contains("### Next step", blocker);
+            }
+            else Assert.Empty(f.Sent);
             Assert.Equal(1, f.State.Payload.GetProperty("planRepairAttempt").GetInt32());
             Assert.Contains("fixture-test", f.State.Payload.GetProperty("planFailure").GetString());
             Assert.Contains("assertion failed", f.State.Payload.GetProperty("planFailure").GetString());
