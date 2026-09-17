@@ -23,7 +23,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         foreach (var key in new[] { "environmentId", "workstreamId", "templateId", "publicationGeneration" })
             Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty(key).ValueKind);
         Assert.Equal(0, f.State.Payload.GetProperty("offset").GetInt32());
-        Assert.Contains("explicit grant", Assert.Single(f.Sent));
+        Assert.Contains("approval to share the review link", Assert.Single(f.Sent));
     }
 
     [Theory]
@@ -57,7 +57,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test", maximumComputeReplacements = maximum } });
         await agent.HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
         Assert.Equal(attempted + (replace ? 1 : 0), f.State.Payload.GetProperty("replacementAttempt").GetInt32());
-        Assert.Contains(replace ? "explicit grant" : "replacement limit", Assert.Single(f.Sent));
+        Assert.Contains(replace ? "approval to share the review link" : "replacement limit", Assert.Single(f.Sent));
     }
 
     [Fact]

@@ -156,10 +156,10 @@ public sealed partial class ComputeDeploymentRecoveryTests
             if (exhaustRepairBudget)
             {
                 var blocker = Assert.Single(f.Sent);
-                Assert.Contains("Task validation failed", blocker);
+                Assert.Contains("checks still failed", blocker);
                 Assert.Contains("fixture-test", blocker);
                 Assert.Contains("assertion failed", blocker);
-                Assert.Contains("### Next step", blocker);
+                Assert.Contains("move it to To Do", blocker);
             }
             else Assert.Empty(f.Sent);
             Assert.Equal(1, f.State.Payload.GetProperty("planRepairAttempt").GetInt32());

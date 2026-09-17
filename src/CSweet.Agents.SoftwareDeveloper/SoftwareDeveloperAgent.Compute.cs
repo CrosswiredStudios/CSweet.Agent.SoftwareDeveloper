@@ -28,7 +28,7 @@ public sealed partial class SoftwareDeveloperAgent
                 _logger.LogWarning(error, "Assigned compute is unavailable during onboarding; continuing in planning-only mode.");
             }
             await context.Platform.Communication.SendMessageAsync(onboarding.ConversationId,
-                "Hi, I’m Daniel Kim, your Software Developer. I’m preparing my assigned Linux workspace now. I can discuss requirements and create a complete plan and repository while it is provisioning, but I will keep development tickets Ready and unclaimed until the workspace is available.",
+                "Hi, I’m Daniel Kim, your software developer. I’m getting my workspace ready. Tell me what you’d like to build, and we can start planning.",
                 $"software-developer-onboarding:{message.EventId:N}", token);
             try { await EnsureAssignedComputeAsync(context, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }

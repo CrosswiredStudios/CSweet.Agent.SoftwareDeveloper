@@ -41,7 +41,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             (x.GetProperty("command").GetString(), x.GetProperty("succeeded").GetBoolean(), x.GetProperty("exitCode").GetInt32())),
             savedOutcome.GetProperty("validations").EnumerateArray().Select(x =>
             (x.GetProperty("command").GetString(), x.GetProperty("succeeded").GetBoolean(), x.GetProperty("exitCode").GetInt32())));
-        Assert.Contains(recover ? "explicit grant" : "replacement limit", Assert.Single(f.Sent));
+        Assert.Contains(recover ? "approval to share the review link" : "replacement limit", Assert.Single(f.Sent));
         if (recover)
         {
             Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("environmentId").ValueKind);

@@ -139,7 +139,8 @@ public sealed partial class ComputeDeploymentRecoveryTests
             Assert.Equal("Running", task.Status);
             if (!failedTest)
             {
-                Assert.Contains("completion report requires validations", Assert.Single(f.Sent));
+                Assert.Contains("which evidence is missing", Assert.Single(f.Sent));
+                Assert.Contains("completion report requires validations", f.State.Payload.GetProperty("planFailure").GetString());
                 Assert.DoesNotContain("required platform step", f.Sent[0]);
             }
             else Assert.Contains("blocked", Assert.Single(f.Sent));

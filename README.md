@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.9.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.9.2`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -178,7 +178,7 @@ The new manifest requests work.personal-plan.create.v1 and work.personal-plan.re
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.9.0. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.9.2. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
 
 
 ## Completion and interruption recovery (1.8.4)
@@ -242,3 +242,28 @@ unchanged. This adds no polling loop, subscription, grant, or configuration fiel
 Update Daniel to 1.9.0 through the normal agent update flow. Unfinished planning resumes from
 saved stages; older versions have no partial draft to recover. Requeue a blocked epic if needed.
 Smaller requests reduce generation workload, but provider failures can still require a retry.
+
+## Review handoff and runtime validation (1.9.2)
+
+`SoftwareDeveloperAgent.ReviewDeliveryMessage` puts the actual review URL first and explains
+local access and expiry. The task's detailed coding outcome remains in `DeploymentState.Outcome`;
+it is no longer copied into chat as the delivery summary. `CompletedAsync` sends the saved
+handoff using its stable completion key before reporting the final deployment task complete.
+Publication still requires a completed provider operation, a current expiry, and a verified
+loopback URL. This is a review build: an HTTP response alone does not prove product acceptance.
+
+`DevelopmentBlockerChatMessage` provides a short first-person update with a board link, while
+`DevelopmentBlockerMessage` continues to populate the detailed blocker and ticket comments.
+
+`NodeDeploymentValidationScript` runs `npm --offline test` in cached `csweet/node:22` when the
+source snapshot contains `package.json`. It requires a nonempty test script, copies source into
+the temporary test container, disables network and image pulls, and retains bounded failure
+output for the existing repair flow. Tests run from the full source snapshot before the image
+build, even when the Dockerfile omits development files. Non-Node projects retain their existing
+validation path. Unit tests cannot by themselves prove UI completeness; integration tasks must
+exercise actual entry points and feature wiring, followed by human review of the running build.
+
+Verification: `ReviewDeliveryTests` covers URL-first formatting, publication failures, delivery
+ordering, restart recovery and preservation of technical evidence. Existing deployment recovery
+tests cover failed command outcomes and bounded repairs. Update the agent for future work;
+this release does not retroactively repair generated applications or rewrite historical messages.

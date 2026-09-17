@@ -182,6 +182,6 @@ Saved plan:
         $"Overall product requirements (context only):\n{wholeRequest}\n\nImplement ONLY this planned task now: {task.Title}\n" +
         task.Description + "\nAcceptance criteria:\n- " + string.Join("\n- ", task.AcceptanceCriteria) +
         "\nPreserve completed work. Do not implement future tasks. Record only checks actually run. " +
-        (task.PlanExecution == "Validation" ? "Run integration/regression tests, repair discovered defects, and verify the Dockerfile and application are ready for deployment." :
+        (task.PlanExecution == "Validation" ? "Exercise the real application entry point and its wiring to every required feature, not only isolated modules or copied simulation logic. Remove placeholder or shell-only behavior. Run integration/regression tests against the actual application code, repair discovered defects, and verify the Dockerfile and application are ready for deployment." :
             "Add focused tests for this unit of work. The final validation task will check the complete product and Docker configuration.");
 }

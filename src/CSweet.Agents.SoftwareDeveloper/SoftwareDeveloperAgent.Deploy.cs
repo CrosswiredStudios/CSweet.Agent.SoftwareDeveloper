@@ -145,8 +145,9 @@ Write .csweet/outcome.json with this exact shape, recording only tests actually 
 {"summary":"...","changedFiles":["path"],"validations":[{"command":"...","succeeded":true,"exitCode":0,"diagnosticExcerpt":null}],"remainingRisks":[]}.
 If the retained implementation already satisfies this task, use "changedFiles":[], explain what was verified in summary,
 and record fresh relevant validation. Do not invent edits merely to report changed files.
-A Docker build and HTTP health check do not automatically run your test suite. Do not claim that missing Node tests
-will run automatically during deployment, or that Python static checks execute the Node server. Report unexecuted checks as risks.
+The platform runs package.json test scripts with npm --offline test in the cached Node runtime before building the image.
+Keep all test files in the source snapshot and provide a real test script. Python static checks do not execute JavaScript.
+Report checks not yet executed as risks; do not claim that a Docker build or HTTP response proves gameplay works.
 For a negative-path test, make the enclosing validation command exit 0 when the expected failure is observed. Do not report an intentionally
 induced child-process failure as a failed validation when the enclosing test passed.
 Include README instructions and test coverage for the requested behavior. The platform handles deployment.
@@ -320,7 +321,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     BundleDigest = null, Offset = 0, PublicationGeneration = null, Step = state.Step + 1 };
                 await SaveAsync();
                 await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
-                    "The test instance is no longer available. I have retained the source commit and will request a replacement Linux instance. Network access still requires an explicit grant.",
+                    "The test instance stopped before I could finish. Your code is saved, and I’m preparing a replacement. I’ll let you know if I need your approval to share the review link.",
                     prefix + ":instance-replacement:" + state.ReplacementAttempt, ct);
                 return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Requesting replacement compute using the retained source and test results.");
             }
@@ -376,16 +377,16 @@ Include README instructions and test coverage for the requested behavior. The pl
                     if (publication.Result is not { ErrorCode: null, Url: { } url, UrlExpiresAt: { } expiry } || expiry <= DateTimeOffset.UtcNow ||
                         !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "http" || uri.Host != "127.0.0.1")
                         throw new InvalidOperationException("The provider did not return a current verified local link.");
-                    state = state with { Result = $"{verifiedOutcome.Summary}\n\n[Open application ↗]({url})\n\n" +
-                        (expiry == DateTimeOffset.MaxValue ? "The link opens on the compute host and remains available until the instance is released or access is revoked.\n" : $"The link opens on the compute host and expires at {expiry:O}.\n") +
-                        $"[View source](/organizations/{context.BusinessId}/source-control?repository={sourcePublication.RepositoryId:D}&reference={Uri.EscapeDataString("refs/heads/" + sourcePublication.BranchName)}) · Commit: {sourcePublication.CommitSha}. Environment: {environment.Id:D}." };
+                    var sourceUrl = $"/organizations/{context.BusinessId}/source-control?repository={sourcePublication.RepositoryId:D}&reference={Uri.EscapeDataString("refs/heads/" + sourcePublication.BranchName)}";
+                    state = state with { Result = ReviewDeliveryMessage(state.PlanRequest?.EpicTitle ?? item.Title,
+                        url, expiry, sourceUrl, PersonalBoardUrl(context.BusinessId, item)) };
                     await SaveAsync();
                     return await CompletedAsync(state.Result);
                 }
                 catch (PlatformCapabilityException error) when (error.FailureCode == "compute_authority_denied" || error.Code == PlatformCapabilityErrorCode.Denied)
                 {
                     await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
-                        $"The application is built and its HTTP health check passed. It needs an explicit local test-link grant before I can expose it. [Open Compute](/organizations/{context.BusinessId}/compute) and approve local link access for instance {environment.Id:D}; I will continue automatically.", prefix + ":network-needed", ct);
+                        $"The app is running, but I need your approval to make its review link available. [Open Compute](/organizations/{context.BusinessId}/compute) and approve local link access for my test instance. I’ll send you the URL as soon as access is approved.", prefix + ":network-needed", ct);
                     return Wait("Awaiting an explicit network grant for the local test link. No outbound or public internet access is requested.");
                 }
             }
@@ -409,6 +410,7 @@ cd {guestRoot}
 printf '%s  source.tar.gz\n' '{state.BundleDigest}' | sha256sum -c -
 mkdir -p source-{state.RepairAttempt}
 tar -xzf source.tar.gz -C source-{state.RepairAttempt}
+{NodeDeploymentValidationScript(state.RepairAttempt, Settings.GetInt32("deploymentDiagnosticCharacters", 6000))}
 # Keep the complete diagnostic in the VM; return the failure tail within the broker output budget.
 set +e
 docker build --network=none --pull=false -t {appName}:test source-{state.RepairAttempt} > build-{state.RepairAttempt}.log 2>&1
@@ -419,7 +421,7 @@ if [ "$build_exit" -ne 0 ]; then
   tail -c {Math.Clamp(Settings.GetInt32("deploymentDiagnosticCharacters", 6000), 1, 7000)} build-{state.RepairAttempt}.log >&2
   exit "$build_exit"
 fi
-echo 'Docker build and image tests passed.'
+echo 'Docker build passed.'
 # The VM is the isolation boundary. Expose only guest loopback, never the provider host.
 systemctl list-units --plain --no-legend 'csweet-hello-*.service' | tr -s ' ' | cut -d' ' -f1 | xargs -r systemctl stop
 docker ps --filter publish=8080 -q | xargs -r docker stop
@@ -459,7 +461,7 @@ PY
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
             var reason = DevelopmentBlockerMessage(error, state.LastFailure, currentStep);
-            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, reason, prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
+            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, DevelopmentBlockerChatMessage(error, item.Title, PersonalBoardUrl(context.BusinessId, item)), prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
             return PersonalTodoResult.Blocked(reason);
         }
 
@@ -472,6 +474,8 @@ PY
         PersonalTodoResult Wait(string reason) => PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), reason);
         async Task<PersonalTodoResult> CompletedAsync(string summary)
         {
+            // Deliver the review URL before marking the final task complete.
+            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, summary, prefix + ":complete", ct);
             if (state.PlanRequest is not null && state.ActivePlanTaskId is { } active)
             {
                 var directory = await context.Platform.PersonalTodo.ListAsync(ct);
@@ -480,7 +484,6 @@ PY
                     await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, task.Id, task.Revision,
                         "Completed", summary, $"plan-deployed:{task.Id:N}"), ct);
             }
-            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, summary, prefix + ":complete", ct);
             return PersonalTodoResult.Completed(summary);
         }
     }

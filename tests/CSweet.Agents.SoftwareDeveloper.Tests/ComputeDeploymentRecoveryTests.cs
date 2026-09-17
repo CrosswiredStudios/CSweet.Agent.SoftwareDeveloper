@@ -49,9 +49,11 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 {
                     Assert.Null(nextReview);
                     var blocker = Assert.Single(f.Sent);
-                    Assert.Contains("Provider unavailable", blocker);
-                    Assert.Contains(PlatformCapabilities.LlmChatStream, blocker);
-                    Assert.Contains("Restore model access", blocker);
+                    Assert.Contains("My model service", blocker);
+                    Assert.Contains("To Do", blocker);
+                    Assert.DoesNotContain(PlatformCapabilities.LlmChatStream, blocker);
+                    Assert.Contains("Provider unavailable", ResultContent(result));
+                    Assert.Contains(PlatformCapabilities.LlmChatStream, ResultContent(result));
                 }
                 Assert.False(Directory.Exists(root));
                 Assert.Equal(workspaceId, f.State.Payload.GetProperty("workspace").GetProperty("workspaceId").GetGuid());
@@ -88,14 +90,15 @@ public sealed partial class ComputeDeploymentRecoveryTests
         published = true;
         await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
         Assert.Equal(new long[] { 16, 16 }, generations);
-        Assert.Contains("[Open application", Assert.Single(f.Sent));
+        Assert.Contains("Your review build is running: **[http://127.0.0.1:43210/", Assert.Single(f.Sent));
         Assert.Contains("View source", f.Sent[0]);
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Known_build_failure_reenters_coding_but_unknown_outcome_does_not_start_another_command(bool unknown)
+    [InlineData(false, "Dockerfile error")]
+    [InlineData(false, "Node test suite failed (exit 1). AssertionError: expected bricks in the game.")]
+    [InlineData(true, "outcome-unknown")]
+    public async Task Known_build_failure_reenters_coding_but_unknown_outcome_does_not_start_another_command(bool unknown, string diagnostic)
     {
         var request = new ExecuteComputeCommandRequest(Guid.NewGuid(), 8, "original-command",
             new(Guid.NewGuid(), "/bin/sh", "/var/lib/csweet-compute/work", ["-c", "docker build --network=none ."]));
@@ -107,12 +110,19 @@ public sealed partial class ComputeDeploymentRecoveryTests
             return Task.FromResult<object>(new { id = f.Operation, status = "Completed" });
         }).RegisterCapability<JsonElement, object>("compute.read.v1", (r, _) => Task.FromResult<object>(r.TryGetProperty("operationId", out var operationHint)
             ? new { id = f.Operation, status = "Completed", result = (object)(unknown ? new { errorCode = "outcome-unknown" } :
-                (object)new { command = new { exitCode = 1, timedOut = false, standardError = Convert.ToBase64String("Dockerfile error"u8.ToArray()) } }) }
+                (object)new { command = new { exitCode = 1, timedOut = false, standardError = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(diagnostic)) } }) }
             : new { id = f.Environment, generation = 9, state = "ready", leaseExpiresAt = DateTimeOffset.UtcNow.AddMinutes(20) }));
         await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
         Assert.Equal("original-command", Assert.Single(commands));
-        if (unknown) { Assert.Contains("safely confirm", Assert.Single(f.Sent)); Assert.Equal(0, f.State.Payload.GetProperty("repairAttempt").GetInt32()); }
-        else { Assert.Empty(f.Sent); Assert.Equal(1, f.State.Payload.GetProperty("repairAttempt").GetInt32()); Assert.Equal("Code", f.State.Payload.GetProperty("stage").GetString()); }
+        if (unknown) { Assert.Contains("outcome is unknown", Assert.Single(f.Sent)); Assert.Equal(0, f.State.Payload.GetProperty("repairAttempt").GetInt32()); }
+        else
+        {
+            Assert.Empty(f.Sent);
+            Assert.Equal(1, f.State.Payload.GetProperty("repairAttempt").GetInt32());
+            Assert.Equal("Code", f.State.Payload.GetProperty("stage").GetString());
+            Assert.Contains(diagnostic, f.State.Payload.GetProperty("lastFailure").GetString());
+            Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("result").ValueKind);
+        }
     }
 
     [Fact]
@@ -171,7 +181,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("publicationGeneration").ValueKind);
         Assert.Equal(0, f.State.Payload.GetProperty("offset").GetInt32());
         Assert.Equal("Upload", f.State.Payload.GetProperty("stage").GetString());
-        Assert.Contains("explicit grant", Assert.Single(f.Sent));
+        Assert.Contains("approval to share the review link", Assert.Single(f.Sent));
     }
 
     [Fact]
