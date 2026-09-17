@@ -188,6 +188,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
     private sealed class PlannedClient(int phase) : IChatClient
     {
         private int _turn;
+        private int _planningTurn;
         public void Dispose() { }
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default)
@@ -201,7 +202,12 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 new("delivery", "Delivery", "Test and deploy", ["Playable URL"],
                     [new("validate", "Validate", "Run integration", ["Tests pass"], "Validation"), new("deploy", "Deploy", "Publish game", ["Health check passes"], "Deployment")])
             ]);
-            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(draft))));
+            var turn = _planningTurn++;
+            object response = turn == 0
+                ? new { draft.EpicTitle, Stories = draft.Stories.Select(x => new { x.Key, x.Title, x.Description, x.AcceptanceCriteria }) }
+                : new { StoryKey = draft.Stories[turn - 1].Key, draft.Stories[turn - 1].Tasks };
+            Assert.InRange(options!.MaxOutputTokens!.Value, 1, SoftwareDeveloperAgent.PlanningOutputTokenLimit);
+            return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(response))));
         }
 
         public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,

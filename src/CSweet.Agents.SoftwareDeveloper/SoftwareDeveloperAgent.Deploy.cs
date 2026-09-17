@@ -20,7 +20,7 @@ public sealed partial class SoftwareDeveloperAgent
         long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0, CreatePersonalWorkPlanRequest? PlanRequest = null,
         Guid? ActivePlanTaskId = null, SoftwareDevelopmentOutcome? LastPlanOutcome = null,
         int PlanRepairAttempt = 0, string? PlanFailure = null, bool UntilReleaseRecoveryUsed = false,
-        PendingPlanCompletion? PlanCompletion = null);
+        PendingPlanCompletion? PlanCompletion = null, DevelopmentPlanDraft? PlanningDraft = null);
     private sealed record PendingPlanCompletion(Guid TaskId, long TaskRevision, SoftwareDevelopmentOutcome Outcome,
         GitWorkspacePublication? Checkpoint = null);
     private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
@@ -54,7 +54,12 @@ public sealed partial class SoftwareDeveloperAgent
                 if (state.PlanRequest is null)
                 {
                     await ProgressAsync("Planning the MVP epic, testable stories, and small tasks before implementation.");
-                    state = state with { PlanRequest = await PlanDevelopmentAsync(item, terms, context, ct) };
+                    var request = await PlanDevelopmentAsync(item, terms, context, state.PlanningDraft, async draft =>
+                    {
+                        state = state with { PlanningDraft = draft };
+                        await SaveAsync();
+                    }, ct);
+                    state = state with { PlanRequest = request, PlanningDraft = null };
                     await SaveAsync();
                 }
                 currentStep = "Loading the development plan";

@@ -39,8 +39,12 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
                 var state = retained?.Payload ?? new();
                 if (state.PlanRequest is null)
                 {
-                    var request = await PlanDevelopmentAsync(item, terms, context, cancellationToken);
-                    state = state with { PlanRequest = request };
+                    var request = await PlanDevelopmentAsync(item, terms, context, state.PlanningDraft, async draft =>
+                    {
+                        state = state with { PlanningDraft = draft };
+                        retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, cancellationToken);
+                    }, cancellationToken);
+                    state = state with { PlanRequest = request, PlanningDraft = null };
                     retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, cancellationToken);
                 }
                 var planRequest = state.PlanRequest!;

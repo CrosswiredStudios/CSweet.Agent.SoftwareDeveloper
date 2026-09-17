@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.8.5`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.9.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -178,7 +178,7 @@ The new manifest requests work.personal-plan.create.v1 and work.personal-plan.re
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.8.5. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.9.0. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
 
 
 ## Completion and interruption recovery (1.8.4)
@@ -219,3 +219,26 @@ C-Sweet's `AgentTicketFeedback.ReportedReason` preserves these multiline reports
 update the platform as well as Daniel to see evidence and next steps in ticket discussion.
 Existing comments are historical records and are not rewritten. Requeue a blocked task after
 addressing its reported cause; updating the agent alone does not repair an underlying failure.
+
+## Resumable planning (1.9.0)
+
+`SoftwareDeveloperAgent.PlanDevelopmentAsync` makes one outline request, then one task request
+per story. Each request uses at most 4,096 output tokens, or the configured lower
+`maxOutputTokens` value. The larger coding output setting does not enlarge planning responses.
+Each stage has at most three validation attempts; a correction regenerates only that stage.
+
+`DeploymentState.PlanningDraft` checkpoints the accepted outline and each populated story in
+the existing operating-state record, before the next model request. Cancellation or provider
+failure leaves earlier stages available on retry. A fully populated draft can become the
+immutable `PlanRequest` without another model call. Existing `PlanRequest` records remain
+authoritative and are never regenerated.
+
+The outline and partial task lists are internal planning state. The Work board receives the
+complete, validated epic/stories/tasks together before repository reservation and coding.
+Task generation remains sequential and bounded to 2–8 stories and 48 tasks; coding still runs
+one task per durable callback. The final integration Validation and Deployment sequence is
+unchanged. This adds no polling loop, subscription, grant, or configuration field.
+
+Update Daniel to 1.9.0 through the normal agent update flow. Unfinished planning resumes from
+saved stages; older versions have no partial draft to recover. Requeue a blocked epic if needed.
+Smaller requests reduce generation workload, but provider failures can still require a retry.
