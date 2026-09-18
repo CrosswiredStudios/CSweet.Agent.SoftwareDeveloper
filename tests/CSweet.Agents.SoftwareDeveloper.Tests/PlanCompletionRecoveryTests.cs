@@ -11,6 +11,52 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed partial class ComputeDeploymentRecoveryTests
 {
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Published_task_waits_in_testing_across_restart_and_completes_only_after_merge(bool legacyWorkspace)
+    {
+        var f = new Fixture("Code");
+        var task = f.Item with { Id = Guid.NewGuid(), PlanRootId = f.Item.Id, Kind = "Task", Title = "Fix collision", PlanExecution = "Implementation", Status = "WaitingForApproval" };
+        var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
+        var publication = payload["publication"]!.DeepClone();
+        payload["planCompletion"] = new JsonObject { ["taskId"] = JsonValue.Create(task.Id), ["taskRevision"] = JsonValue.Create(task.Revision), ["outcome"] = payload["outcome"]!.DeepClone(), ["checkpoint"] = publication };
+        payload["activePlanTaskId"] = JsonValue.Create(task.Id);
+        payload["workspace"]!["workItemId"] = JsonValue.Create(legacyWorkspace ? f.Item.Id : task.Id);
+        payload["outcome"] = null; payload["publication"] = null;
+        payload["planRequest"] = JsonSerializer.SerializeToNode(new CreatePersonalWorkPlanRequest(f.Item.Id, "Game", [], "plan"));
+        f.State = f.State with { Payload = JsonSerializer.SerializeToElement(payload) };
+        var status = "AwaitingApproval"; var completions = 0; var publications = 0;
+        var childWorkspace = Guid.NewGuid();
+        f.Runtime.RegisterCapability<PreparePersonalGitWorkspaceRequest, GitWorkspaceResult>(GitWorkspaceCapabilities.PreparePersonal, (r, _) =>
+        {
+            Assert.True(legacyWorkspace); Assert.Equal(task.Id, r.TaskItemId);
+            return Task.FromResult(new GitWorkspaceResult(childWorkspace, task.Id, "/workspace/child/1", Guid.NewGuid(), "InternalGit", "Task", new string('b', 40), "Ready", false));
+        }).RegisterCapability<PublishGitWorkspaceRequest, GitWorkspacePublication>(GitWorkspaceCapabilities.Publish, (r, _) =>
+        {
+            Assert.True(legacyWorkspace); Assert.Equal(childWorkspace, r.WorkspaceId); publications++;
+            return Task.FromResult(new GitWorkspacePublication(Guid.NewGuid(), childWorkspace, Guid.NewGuid(), "InternalGit", "Task", "task/fix", new string('b', 40), null, "Published"));
+        });
+        f.Runtime.RegisterCapability<CreatePersonalWorkPlanRequest, PersonalWorkPlan>(PersonalWorkPlanCapabilities.Create, (_, _) => Task.FromResult(new PersonalWorkPlan(f.Item.Id, 1, [task])))
+            .RegisterCapability<SubmitTaskReviewRequest, TaskReviewResult>(TaskDeliveryCapabilities.Submit, (r, _) => Task.FromResult(new TaskReviewResult(Guid.NewGuid(), task.Id, f.Item.Id, Guid.NewGuid(), task.Title, task.Description, [], new string('b', 40), status, "NotAssigned", null, null, 1, 1)))
+            .RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) => Task.FromResult(new PersonalTodoDirectory([new(task.BoardId, task.OwnerOrganizationUserId, "Daniel", null, null, 1, [task])], task.OwnerOrganizationUserId)))
+            .RegisterCapability<ReportPersonalWorkPlanTaskRequest, PersonalTodoItem>(PersonalWorkPlanCapabilities.ReportTask, (r, _) =>
+            {
+                Assert.Equal("Merged", status); Assert.Equal("Completed", r.Status); completions++;
+                return Task.FromResult(task = task with { Status = "Completed" });
+            });
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+            Assert.Equal(0, completions); Assert.Equal("WaitingForApproval", task.Status);
+            Assert.Equal(task.Id, f.State.Payload.GetProperty("planCompletion").GetProperty("taskId").GetGuid());
+        }
+        Assert.Equal(legacyWorkspace ? 1 : 0, publications);
+        status = "Merged";
+        await new SoftwareDeveloperAgent().HandlePersonalTodoAsync(f.Item, f.Runtime.CreateContext(), default);
+        Assert.Equal(1, completions); Assert.Equal(JsonValueKind.Null, f.State.Payload.GetProperty("workspace").ValueKind);
+    }
+
+    [Theory]
     [InlineData("none")]
     [InlineData("publication")]
     [InlineData("ticket")]
@@ -23,6 +69,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         payload["outcome"] = null; payload["publication"] = null; payload["bundleDigest"] = null;
         // Match the existing 1.8.3 blocker: three failed reports for this same active task.
         payload["activePlanTaskId"] = JsonValue.Create(task.Id);
+        payload["workspace"]!["workItemId"] = JsonValue.Create(task.Id);
         payload["planRepairAttempt"] = 3;
         payload["planFailure"] = "The structured implementation outcome is incomplete.";
         payload["planRequest"] = JsonSerializer.SerializeToNode(new CreatePersonalWorkPlanRequest(f.Item.Id, "MVP", [], "plan"));
@@ -71,6 +118,8 @@ public sealed partial class ComputeDeploymentRecoveryTests
                     "InternalGit", GitDeliveryKinds.PullRequest, "csweet/retained", new string('b', 40),
                     new Uri("http://localhost/source"), "Published"));
             });
+        f.Runtime.RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) => Task.FromResult(
+            new PersonalTodoDirectory([new(task.BoardId, task.OwnerOrganizationUserId, "Daniel", null, null, 1, [task])], task.OwnerOrganizationUserId)));
         var factory = new OutcomeFactory(ImplementationOutcomeTests.VerifiedUnchanged);
         try
         {

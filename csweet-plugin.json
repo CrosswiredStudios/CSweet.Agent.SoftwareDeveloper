@@ -10,7 +10,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.9.2",
+  "version": "1.10.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -689,7 +689,8 @@
       "scope": "organization",
       "purpose": "Reserve a concise private repository for an owned Ready development ticket without starting implementation.",
       "modelVisible": false
-    },    {
+    },
+    {
       "name": "source-control.personal-work.prepare.v1",
       "scope": "organization",
       "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
@@ -730,6 +731,36 @@
       "scope": "organization",
       "purpose": "Plan owned direct requests as MVP epics, testable stories, and small tasks; report verified task progress.",
       "modelVisible": false
+    },
+    {
+      "name": "source-control.task-review.submit.v1",
+      "scope": "work-item",
+      "purpose": "Participate in durable review of the exact task source revision"
+    },
+    {
+      "name": "source-control.task-review.read.v1",
+      "scope": "work-item",
+      "purpose": "Participate in durable review of the exact task source revision"
+    },
+    {
+      "name": "source-control.task-review.decide.v1",
+      "scope": "work-item",
+      "purpose": "Participate in durable review of the exact task source revision"
+    },
+    {
+      "name": "source-control.merge-preference.read.v1",
+      "scope": "work-item",
+      "purpose": "Read or update manager-authorized story and epic merge preferences"
+    },
+    {
+      "name": "source-control.merge-preference.change.v1",
+      "scope": "work-item",
+      "purpose": "Read or update manager-authorized story and epic merge preferences"
+    },
+    {
+      "name": "source-control.task-review.list.v1",
+      "scope": "work-item",
+      "purpose": "Recover assigned pending reviews after a missed wake event"
     }
   ],
   "events": {
@@ -741,7 +772,8 @@
       "com.csweet.agent.coordination.turn-requested.v1",
       "com.csweet.user.message.received.v1",
       "com.csweet.compute.changed.v1",
-      "com.csweet.compute.available.v1"
+      "com.csweet.compute.available.v1",
+      "com.csweet.source-control.task-review.changed.v1"
     ]
   },
   "configuration": [

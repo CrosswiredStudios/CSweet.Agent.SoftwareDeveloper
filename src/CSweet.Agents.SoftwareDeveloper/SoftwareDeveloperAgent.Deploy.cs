@@ -20,7 +20,7 @@ public sealed partial class SoftwareDeveloperAgent
         long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0, CreatePersonalWorkPlanRequest? PlanRequest = null,
         Guid? ActivePlanTaskId = null, SoftwareDevelopmentOutcome? LastPlanOutcome = null,
         int PlanRepairAttempt = 0, string? PlanFailure = null, bool UntilReleaseRecoveryUsed = false,
-        PendingPlanCompletion? PlanCompletion = null, DevelopmentPlanDraft? PlanningDraft = null);
+        PendingPlanCompletion? PlanCompletion = null, DevelopmentPlanDraft? PlanningDraft = null, int ReviewRepairAttempt = 0);
     private sealed record PendingPlanCompletion(Guid TaskId, long TaskRevision, SoftwareDevelopmentOutcome Outcome,
         GitWorkspacePublication? Checkpoint = null);
     private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
@@ -51,26 +51,17 @@ public sealed partial class SoftwareDeveloperAgent
             PersonalTodoItem? planTask = null;
             if (state.PlanRequest is not null || state.Outcome is null && state.Publication is null)
             {
-                if (state.PlanRequest is null)
-                {
-                    await ProgressAsync("Planning the MVP epic, testable stories, and small tasks before implementation.");
-                    var request = await PlanDevelopmentAsync(item, terms, context, state.PlanningDraft, async draft =>
-                    {
-                        state = state with { PlanningDraft = draft };
-                        await SaveAsync();
-                    }, ct);
-                    state = state with { PlanRequest = request, PlanningDraft = null };
-                    await SaveAsync();
-                }
-                currentStep = "Loading the development plan";
-                var plan = await context.Platform.PersonalTodo.CreatePlanAsync(state.PlanRequest, ct);
+                await ProgressAsync("Planning the work and its acceptance checks.");
+                var plan = await PrepareDevelopmentPlanAsync(item, context, ct);
+                retained = await context.Platform.ReadOperatingStateAsync<DeploymentState>(stateKey, ct);
+                state = retained?.Payload ?? throw new InvalidOperationException("The saved development plan is missing.");
                 planTask = plan.Items.OrderBy(x => x.Rank).FirstOrDefault(x =>
                     x.Kind == "Task" && x.PlanRootId == item.Id && x.Status != PersonalTodoStatuses.Completed);
                 if (planTask is null) throw new InvalidOperationException("The completed plan is missing its verified deployment result.");
                 state = state.ActivePlanTaskId == planTask.Id
                     ? state
-                    : state with { ActivePlanTaskId = planTask.Id, PlanRepairAttempt = 0, PlanFailure = null, PlanCompletion = null };
-                if (planTask.Status != PersonalTodoStatuses.Running)
+                    : state with { ActivePlanTaskId = planTask.Id, PlanRepairAttempt = 0, PlanFailure = null, PlanCompletion = null, Workspace = null, ReviewRepairAttempt = 0 };
+                if (planTask.Status is not (PersonalTodoStatuses.Running or "WaitingForApproval"))
                     planTask = await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id,
                         planTask.Revision, "Running", null, $"plan-start:{planTask.Id:N}:{planTask.Revision}"), ct);
                 await SaveAsync();
@@ -81,10 +72,11 @@ public sealed partial class SoftwareDeveloperAgent
                     await SaveAsync();
                 }
             }
+            if (planTask is not null) await UpgradeTaskWorkspaceAsync(planTask.Id, planTask.Title);
             if (state.Workspace is null)
             {
-                await ProgressAsync("Preparing a private C-Sweet repository for this task.");
-                state = state with { Workspace = await context.Platform.Git.PreparePersonalAsync(new(item.Id, prefix + ":repo"), ct) };
+                await ProgressAsync("Preparing the project source workspace.");
+                state = state with { Workspace = await context.Platform.Git.PreparePersonalAsync(new(item.Id, prefix + ":repo") { SourceWorkItemId = terms.SourceWorkItemId, TaskItemId = planTask?.Id }, ct) };
                 await SaveAsync();
             }
             var workspace = state.Workspace;
@@ -226,11 +218,29 @@ Include README instructions and test coverage for the requested behavior. The pl
                 var evidence = completion.Outcome.Summary + "\n" +
                     string.Join("\n", completion.Outcome.Validations.Select(x => $"{x.Command}: exit {x.ExitCode}")) +
                     $"\nCheckpoint: {completion.Checkpoint.BranchName} @ {completion.Checkpoint.CommitSha}";
+                var review = await context.Platform.SourceControl.SubmitTaskReviewAsync(new(item.Id, planTask.Id,
+                    completion.Checkpoint.PublicationId, evidence.Length <= 4096 ? evidence : evidence[..4096], $"review:{completion.Checkpoint.PublicationId:N}"), ct);
+                if (review.Status == "ChangesRequested")
+                {
+                    var attempt = state.ReviewRepairAttempt + 1;
+                    if (attempt > Settings.GetInt32("maximumPlanRepairs", 2))
+                        throw new PlanValidationException("Review still requires changes after the repair attempts: " + review.Failure);
+                    var refreshed = await context.Platform.Git.RefreshAsync(new(workspace.WorkspaceId, 1, $"review-refresh:{review.Id:N}"), ct);
+                    state = state with { PlanCompletion = null, PlanFailure = review.Failure ?? "Review requested changes.", ReviewRepairAttempt = attempt,
+                        Workspace = workspace with { BaseCommitSha = refreshed.BaseCommitSha } };
+                    await SaveAsync();
+                    return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Review found an issue. I’m updating this task and will run the checks again.");
+                }
+                if (review.Status != "Merged")
+                    return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5),
+                        review.Failure ?? (review.Status == "Testing" ? "This task is with QA for testing." : "This task is ready for review and merge approval."));
+                var latestPlan = await context.Platform.PersonalTodo.ListAsync(ct);
+                planTask = latestPlan.Boards.SelectMany(x => x.Items).Single(x => x.Id == planTask.Id);
                 currentStep = "Recording verified task completion";
                 await context.Platform.PersonalTodo.ReportPlanTaskAsync(new(item.Id, planTask.Id, planTask.Revision,
                     "Completed", evidence.Length <= 4096 ? evidence : evidence[..4096],
                     $"plan-complete:{planTask.Id:N}:{planTask.Revision}"), ct);
-                state = state with { ActivePlanTaskId = null, PlanCompletion = null };
+                state = state with { ActivePlanTaskId = null, PlanCompletion = null, Workspace = null, ReviewRepairAttempt = 0 };
                 await SaveAsync();
                 return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1),
                     "Task verified and source saved. Continuing with the next planned task.");
@@ -321,7 +331,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                     BundleDigest = null, Offset = 0, PublicationGeneration = null, Step = state.Step + 1 };
                 await SaveAsync();
                 await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
-                    "The test instance stopped before I could finish. Your code is saved, and I’m preparing a replacement. I’ll let you know if I need your approval to share the review link.",
+                    "The test instance stopped before I could finish. Your code is saved, and Iâ€™m preparing a replacement. Iâ€™ll let you know if I need your approval to share the review link.",
                     prefix + ":instance-replacement:" + state.ReplacementAttempt, ct);
                 return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Requesting replacement compute using the retained source and test results.");
             }
@@ -386,7 +396,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 catch (PlatformCapabilityException error) when (error.FailureCode == "compute_authority_denied" || error.Code == PlatformCapabilityErrorCode.Denied)
                 {
                     await context.Platform.Communication.SendMessageAsync(item.SourceConversationId!.Value,
-                        $"The app is running, but I need your approval to make its review link available. [Open Compute](/organizations/{context.BusinessId}/compute) and approve local link access for my test instance. I’ll send you the URL as soon as access is approved.", prefix + ":network-needed", ct);
+                        $"The app is running, but I need your approval to make its review link available. [Open Compute](/organizations/{context.BusinessId}/compute) and approve local link access for my test instance. Iâ€™ll send you the URL as soon as access is approved.", prefix + ":network-needed", ct);
                     return Wait("Awaiting an explicit network grant for the local test link. No outbound or public internet access is requested.");
                 }
             }
@@ -465,6 +475,37 @@ PY
             return PersonalTodoResult.Blocked(reason);
         }
 
+        async Task UpgradeTaskWorkspaceAsync(Guid taskId, string title)
+        {
+            if (state.Workspace is { } legacy && legacy.WorkItemId != taskId)
+            {
+                // Preserve an accepted legacy checkpoint before preparing the task branch. The
+                // platform derives its migration baseline from the coordinator's retained publication.
+                if (state.PlanCompletion is { Checkpoint: null } completion)
+                {
+                    var checkpoint = await context.Platform.Git.PublishAsync(new(legacy.WorkspaceId, 1,
+                        "Retain " + title, item.Title, completion.Outcome.Summary,
+                        $"task-upgrade:{taskId:N}:{completion.TaskRevision}", completion.Outcome.Validations.Select(x =>
+                            new GitValidationResult(x.Command, x.Succeeded, x.ExitCode, x.DiagnosticExcerpt)).ToArray()), ct);
+                    state = state with { PlanCompletion = completion with { Checkpoint = checkpoint } };
+                    await SaveAsync();
+                }
+                var child = await context.Platform.Git.PreparePersonalAsync(new(item.Id, $"task-upgrade:{taskId:N}")
+                    { SourceWorkItemId = terms.SourceWorkItemId, TaskItemId = taskId }, ct);
+                state = state with { Workspace = child,
+                    PlanCompletion = state.PlanCompletion is { } accepted ? accepted with { Checkpoint = null } : null };
+                await SaveAsync();
+            }
+            if (state.Workspace is { } current && state.Publication is { } published && published.WorkspaceId != current.WorkspaceId && state.Outcome is { } outcome)
+            {
+                var publication = await context.Platform.Git.PublishAsync(new(current.WorkspaceId, 1, "Complete " + title,
+                    item.Title, outcome.Summary, $"task-upgrade-publish:{taskId:N}:{published.PublicationId:N}",
+                    outcome.Validations.Select(x => new GitValidationResult(x.Command, x.Succeeded, x.ExitCode, x.DiagnosticExcerpt)).ToArray()), ct);
+                state = state with { Publication = publication };
+                await SaveAsync();
+            }
+        }
+
         async Task SaveAsync() => retained = await SaveDevelopmentStateAsync(stateKey, state, retained, item.Id, context, ct);
         Task ProgressAsync(string message)
         {
@@ -474,6 +515,25 @@ PY
         PersonalTodoResult Wait(string reason) => PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), reason);
         async Task<PersonalTodoResult> CompletedAsync(string summary)
         {
+            // The deployment branch also needs its own review and confirmed merge.
+            if (state.ActivePlanTaskId is { } deploymentTask && state.Publication is not null)
+            {
+                await UpgradeTaskWorkspaceAsync(deploymentTask, "deployment");
+                var deployedSource = state.Publication!;
+                var review = await context.Platform.SourceControl.SubmitTaskReviewAsync(new(item.Id, deploymentTask,
+                    deployedSource.PublicationId, summary.Length <= 4096 ? summary : summary[..4096], $"review:{deployedSource.PublicationId:N}"), ct);
+                if (review.Status == "ChangesRequested")
+                {
+                    if (state.ReviewRepairAttempt >= Settings.GetInt32("maximumPlanRepairs", 2))
+                        throw new PlanValidationException("Deployment review still requires changes: " + review.Failure);
+                    state = state with { ReviewRepairAttempt = state.ReviewRepairAttempt + 1, Result = null, Outcome = null, Publication = null, BundleDigest = null, Offset = 0,
+                        PlanFailure = review.Failure, Stage = "Code", Step = 0, LastFailure = review.Failure };
+                    await SaveAsync();
+                    return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddSeconds(1), "Review requested a change before this task can finish.");
+                }
+                if (review.Status != "Merged") return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5),
+                    review.Failure ?? "The running app is ready; its deployment task is awaiting review and merge approval.");
+            }
             // Deliver the review URL before marking the final task complete.
             if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, summary, prefix + ":complete", ct);
             if (state.PlanRequest is not null && state.ActivePlanTaskId is { } active)

@@ -12,7 +12,7 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed partial class ComputeDeploymentRecoveryTests
 {
     [Fact]
-    public async Task Ready_compute_still_plans_and_reserves_a_project_named_repository_before_claim()
+    public async Task Ready_compute_claims_before_planning_or_repository_creation()
     {
         var item = new PersonalTodoItem(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Matt",
             "Build a browser game",
@@ -62,7 +62,8 @@ public sealed partial class ComputeDeploymentRecoveryTests
         var decision = await agent.EvaluatePersonalTodoClaimAsync(item, runtime.CreateContext(), default);
 
         Assert.Equal(PersonalTodoClaimDecision.Claim, decision);
-        Assert.Equal(["plan", "reserve"], calls);
+        Assert.Empty(calls);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => agent.PrepareDevelopmentPlanAsync(item, runtime.CreateContext(), default));
     }
 
     [Theory]
@@ -129,6 +130,8 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 "InternalGit", GitDeliveryKinds.PullRequest, "csweet/tetris", new string('b', 40),
                 new Uri("http://localhost/source"), "AwaitingValidation"));
         });
+        f.Runtime.RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) => Task.FromResult(
+            new PersonalTodoDirectory([new(f.Item.BoardId, f.Item.OwnerOrganizationUserId, "Daniel", null, null, 1, tasks)], f.Item.OwnerOrganizationUserId)));
         var factory = new PlanningFactory();
         try
         {

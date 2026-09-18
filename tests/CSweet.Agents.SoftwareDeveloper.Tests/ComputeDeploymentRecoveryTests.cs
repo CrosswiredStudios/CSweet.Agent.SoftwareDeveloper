@@ -208,13 +208,19 @@ public sealed partial class ComputeDeploymentRecoveryTests
             Item = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Matt", "Build puzzle",
                 JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = "Build a puzzle.", environmentId = Environment }),
                 "Running", "Medium", 0, 3, null, Guid.NewGuid(), Guid.NewGuid(), [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            var workspaceId = Guid.NewGuid();
             var payload = JsonSerializer.SerializeToElement(new {
-                workspace = new GitWorkspaceResult(Guid.NewGuid(), Item.Id, "/workspace/test/1", Guid.NewGuid(), "InternalGit", "PullRequest", new string('a', 40), "Ready", true),
+                workspace = new GitWorkspaceResult(workspaceId, Item.Id, "/workspace/test/1", Guid.NewGuid(), "InternalGit", "PullRequest", new string('a', 40), "Ready", true),
                 outcome = new { summary = "Puzzle implemented and tested.", changedFiles = new[] { "app.js" }, validations = new[] { new { command = "node test.js", succeeded = true, exitCode = 0 } }, remainingRisks = Array.Empty<string>() },
-                publication = new GitWorkspacePublication(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "InternalGit", "PullRequest", "csweet/test", new string('b', 40), new Uri("http://localhost/source"), "Published"),
+                publication = new GitWorkspacePublication(Guid.NewGuid(), workspaceId, Guid.NewGuid(), "InternalGit", "PullRequest", "csweet/test", new string('b', 40), new Uri("http://localhost/source"), "Published"),
                 bundleDigest = new string('c', 64), bundleBytes = 100, offset = 100, environmentId = Environment, step = 4, stage, pending,
                 publicationGeneration = 16, repairAttempt = 0 }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
             State = new(Guid.NewGuid(), $"development/task/{Item.Id:N}", SoftwareDeveloperAgent.DirectWorkMarker, 1, "Active", new Dictionary<string, string>(), [], "development", [], Item.Id, payload, 4, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+            var retainedWorkspace = payload.GetProperty("workspace").Deserialize<GitWorkspaceResult>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+            Runtime.RegisterCapability<PreparePersonalGitWorkspaceRequest, GitWorkspaceResult>(GitWorkspaceCapabilities.PreparePersonal,
+                (request, _) => Task.FromResult(retainedWorkspace with { WorkItemId = request.TaskItemId ?? request.ItemId }))
+                .RegisterCapability<SubmitTaskReviewRequest, TaskReviewResult>(TaskDeliveryCapabilities.Submit, (request, _) =>
+                    Task.FromResult(new TaskReviewResult(Guid.NewGuid(), request.TaskItemId, request.RootItemId, Guid.NewGuid(), "Task", "Task", [], new string('b', 40), "Merged", "NotAssigned", null, null, 1, 1)));
             Runtime.RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead, (_, _) => Task.FromResult(new AgentOperatingStateReadResponse(State)))
                 .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite, (r, _) => {
                     Assert.Equal(State.Revision, r.ExpectedRevision); State = State with { Payload = r.Payload, Revision = State.Revision + 1 }; return Task.FromResult(State);

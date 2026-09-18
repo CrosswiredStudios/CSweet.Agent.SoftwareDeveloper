@@ -15,8 +15,30 @@ public sealed partial class SoftwareDeveloperAgent
     internal static readonly string[] ComputeCapabilities = ["compute.provision.v1", "compute.read.v1", "compute.list.v1",
         "compute.execute.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1"];
 
+    public override async Task HandleAttentionReviewAsync(AgentAttentionReviewContext review, AgentRuntimeContext context, CancellationToken ct)
+    {
+        var pending = await context.Platform.SourceControl.ListTaskReviewsAsync(ct);
+        var directory = await context.Platform.PersonalTodo.ListAsync(ct);
+        foreach (var rootId in pending.Where(x => x.Status == "ChangesRequested").Select(x => x.RootItemId).Distinct().Take(32))
+        {
+            var root = directory.Boards.Where(x => x.OwnerOrganizationUserId == directory.CurrentOrganizationUserId).SelectMany(x => x.Items)
+                .SingleOrDefault(x => x.Id == rootId && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null);
+            if (root is not null) await WakeDemoAsync(root, context, ct);
+        }
+    }
+
     public override async Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token)
     {
+        if (message.EventType == TaskDeliveryCapabilities.Changed)
+        {
+            var hint = message.Data.Deserialize<TaskReviewChanged>(SerializerOptions) ?? throw new JsonException("Missing task review event.");
+            await context.Platform.SourceControl.ReadTaskReviewAsync(new(hint.TaskItemId), token);
+            var board = await context.Platform.PersonalTodo.ListAsync(token);
+            var root = board.Boards.Where(x => x.OwnerOrganizationUserId == board.CurrentOrganizationUserId).SelectMany(x => x.Items)
+                .SingleOrDefault(x => x.Id == hint.RootItemId && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null);
+            if (root is not null) await WakeDemoAsync(root, context, token);
+            return;
+        }
         if (message.EventType == AgentLifecycleEvents.Onboarded)
         {
             var onboarding = message.Data.Deserialize<AgentOnboardedEvent>(SerializerOptions)
@@ -28,7 +50,7 @@ public sealed partial class SoftwareDeveloperAgent
                 _logger.LogWarning(error, "Assigned compute is unavailable during onboarding; continuing in planning-only mode.");
             }
             await context.Platform.Communication.SendMessageAsync(onboarding.ConversationId,
-                "Hi, I’m Daniel Kim, your software developer. I’m getting my workspace ready. Tell me what you’d like to build, and we can start planning.",
+                "Hi, IÃ¢â‚¬â„¢m Daniel Kim, your software developer. IÃ¢â‚¬â„¢m getting my workspace ready. Tell me what youÃ¢â‚¬â„¢d like to build, and we can start planning.",
                 $"software-developer-onboarding:{message.EventId:N}", token);
             try { await EnsureAssignedComputeAsync(context, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }

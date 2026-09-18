@@ -9,6 +9,29 @@ public sealed partial class SoftwareDeveloperAgent
 {
     internal const int PlanningOutputTokenLimit = 4096;
 
+    internal async Task<PersonalWorkPlan> PrepareDevelopmentPlanAsync(PersonalTodoItem item,
+        AgentRuntimeContext context, CancellationToken ct)
+    {
+        if (item.Status != PersonalTodoStatuses.Running)
+            throw new InvalidOperationException("Claim the ticket before planning development work.");
+        var terms = JsonSerializer.Deserialize<DirectWorkTerms>(item.Description, SerializerOptions)
+            ?? throw new InvalidOperationException("The development request is missing.");
+        var key = $"development/task/{item.Id:N}";
+        var retained = await context.Platform.ReadOperatingStateAsync<DeploymentState>(key, ct);
+        var state = retained?.Payload ?? new();
+        if (state.PlanRequest is null)
+        {
+            var request = await PlanDevelopmentAsync(item, terms, context, state.PlanningDraft, async draft =>
+            {
+                state = state with { PlanningDraft = draft };
+                retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, ct);
+            }, ct);
+            state = state with { PlanRequest = request, PlanningDraft = null };
+            retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, ct);
+        }
+        return await context.Platform.PersonalTodo.CreatePlanAsync(state.PlanRequest, ct);
+    }
+
     private async Task<CreatePersonalWorkPlanRequest> PlanDevelopmentAsync(PersonalTodoItem item, DirectWorkTerms terms,
         AgentRuntimeContext context, DevelopmentPlanDraft? saved, Func<DevelopmentPlanDraft, Task> checkpoint, CancellationToken ct)
     {
@@ -18,7 +41,8 @@ public sealed partial class SoftwareDeveloperAgent
 
         using var client = await DevelopmentChatClientAsync(context, ct);
         const string instructions = """
-You are planning an MVP before any coding begins for a solo software developer. Preserve the human's
+You are planning a software request before any coding begins for a solo software developer.
+For changes to an existing project, plan only the requested change and regression tests; do not rebuild the application. Preserve the human's
 requirements; do not silently omit difficult functionality. Work on ONLY the requested planning stage.
 Stories are independently testable phases. Tasks are small units that fit a short coding session, ordered
 by dependency, with observable acceptance criteria and tests. Use the same repository throughout.
@@ -36,9 +60,9 @@ Return only the requested JSON. Do not write application code or repeat a full b
         var plan = saved;
         if (plan is null)
         {
-            plan = await GenerateAsync("Planning the MVP epic and story outline.",
+            plan = await GenerateAsync("Planning the epic and story outline.",
                 """
-Return {"epicTitle":"<application name> MVP","stories":[{"key":"unique-key","title":"...",
+Return {"epicTitle":"<application name and requested outcome>","stories":[{"key":"unique-key","title":"...",
 "description":"user-visible phase and scope","acceptanceCriteria":["observable pass/fail behavior"]}]}.
 Use 2–8 stories covering ALL requirements, with final integration and delivery in the final story.
 Do not populate tasks yet. Keep the entire outline under 8000 UTF-8 bytes.

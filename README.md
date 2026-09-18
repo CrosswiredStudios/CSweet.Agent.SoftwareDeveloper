@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.9.2`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.10.0`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -124,7 +124,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.48.1 and `CSweet.WorkManagement.Contracts` 3.24.0.
+Built with `CSweet.Agent.SDK` 3.50.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
 
 ## Release notes
 
@@ -154,7 +154,7 @@ After the Docker build and HTTP health check succeed, Daniel returns an **Open a
 
 Current limits: one-hour ephemeral Linux VM, cached `csweet/python:3.12` and `csweet/node:22` bases, 16 MiB source bundle, 30 seconds per guest command and 8 KiB command output. Guest outbound internet, arbitrary dependency downloads, public deployment and long builds are not supported by this local provider yet. Required unavailable dependencies are reported as blockers.
 
-The chat and personal-work callbacks use `context.Platform`, including SDK 3.48.1's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
+The chat and personal-work callbacks use `context.Platform`, including SDK 3.50.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
 
 Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.
 
@@ -178,7 +178,7 @@ The new manifest requests work.personal-plan.create.v1 and work.personal-plan.re
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.48.1 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.9.2. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+SDK 3.50.0 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.10.0. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
 
 
 ## Completion and interruption recovery (1.8.4)
@@ -267,3 +267,27 @@ Verification: `ReviewDeliveryTests` covers URL-first formatting, publication fai
 ordering, restart recovery and preservation of technical evidence. Existing deployment recovery
 tests cover failed command outcomes and bounded repairs. Update the agent for future work;
 this release does not retroactively repair generated applications or rewrite historical messages.
+
+## Project continuity and planning status (1.10.0)
+
+`EvaluatePersonalTodoClaimAsync` only checks compute prerequisites. The SDK claims the root ticket
+and moves it to Doing before `PrepareDevelopmentPlanAsync` invokes the model. Planning checkpoints
+still survive cancellation and restart; the full backlog is saved before implementation starts.
+Repository preparation uses the saved epic title after planning, without a pre-claim reservation.
+
+`HandleDirectWorkMessageAsync` supplies up to 50 recent completed projects from the developer's own
+board to intake. Bug fixes and enhancements retain an exact `DirectWorkTerms.SourceWorkItemId`;
+ambiguous or unavailable projects require clarification instead of creating a new application.
+Ticket-ownership answers retain that project choice across restarts. Compute IDs identify execution
+capacity, not a project's source repository.
+
+`PreparePersonalGitWorkspaceRequest.SourceWorkItemId` lets the platform validate the owned completed
+project, reuse its repository, and pin its latest completed publication into a separate task branch.
+Retries preserve this source binding. A deliberately new application still gets its own repository.
+Update C-Sweet together with this agent (SDK 3.50.0); an older host cannot honor the new source field.
+Existing prepared tasks keep their original bindings. This update does not merge or remove previously
+created repositories or automatically rebind work already underway.
+
+## Task delivery and merge choices
+
+Personal plans use a branch per task in the existing project repository. Implemented tasks enter Testing, go to the team's QA when available, and wait for a confirmed merge before completion. Managers can approve one exact task, all task merges in a story, or all task merges in an epic, or review first. Ask Daniel about the current setting or change it through normal dialogue. Story overrides take precedence; QA failures and conflicts still require repair. SDK 3.50.0 and the matching platform migration are required. Upgrade grants include task review, preference management, and durable review-change events.

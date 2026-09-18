@@ -26,34 +26,8 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
 
         var compute = await EnsureAssignedComputeAsync(context, cancellationToken);
 
-        // Direct product requests are always fully planned and receive a repository reservation
-        // before the root ticket is claimed. This keeps repository naming tied to the planned
-        // product/epic title even when assigned compute is already Ready.
-        if (IsDirectWork(item))
-        {
-            var terms = JsonSerializer.Deserialize<DirectWorkTerms>(item.Description, SerializerOptions);
-            if (terms is { Kind: DirectWorkMarker, Request.Length: > 0 })
-            {
-                var key = $"development/task/{item.Id:N}";
-                var retained = await context.Platform.ReadOperatingStateAsync<DeploymentState>(key, cancellationToken);
-                var state = retained?.Payload ?? new();
-                if (state.PlanRequest is null)
-                {
-                    var request = await PlanDevelopmentAsync(item, terms, context, state.PlanningDraft, async draft =>
-                    {
-                        state = state with { PlanningDraft = draft };
-                        retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, cancellationToken);
-                    }, cancellationToken);
-                    state = state with { PlanRequest = request, PlanningDraft = null };
-                    retained = await SaveDevelopmentStateAsync(key, state, retained, item.Id, context, cancellationToken);
-                }
-                var planRequest = state.PlanRequest!;
-                var plan = await context.Platform.PersonalTodo.CreatePlanAsync(planRequest, cancellationToken);
-                await context.Platform.Git.ReservePersonalAsync(new(
-                    item.Id, plan.RootRevision, planRequest.EpicTitle,
-                    $"direct:{item.Id:N}:reserve"), cancellationToken);
-            }
-        }
+        // The SDK claims the ticket (and moves it to Doing) before the callback plans work.
+        // Claim policy only checks prerequisites; it must not run model inference.
         return compute.Ready ? PersonalTodoClaimDecision.Claim : PersonalTodoClaimDecision.Skip;
     }
 

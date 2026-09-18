@@ -38,12 +38,12 @@ public sealed class StagedPlanningTests
             Assert.Contains("grid", messages); // Earlier accepted tasks remain context, not regenerated output.
             return Tasks(1);
         });
-        Assert.Equal(PersonalTodoClaimDecision.Claim, await f.EvaluateAsync(resumed));
+        await f.EvaluateAsync(resumed);
         Assert.Equal(1, resumed.Calls);
         Assert.Equal(3, f.PlanningWrites);
         var plan = Assert.Single(f.Plans);
         Assert.Equal(4, plan.Stories.Sum(x => x.Tasks.Count));
-        Assert.Equal(1, f.Reservations);
+        Assert.Equal(0, f.Reservations);
 
         var noModel = new ScriptedFactory((_, _) => throw new InvalidOperationException("Do not replan."));
         await f.EvaluateAsync(noModel);
@@ -156,7 +156,7 @@ public sealed class StagedPlanningTests
         {
             _item = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Matt", "Build Tetris",
                 JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = "Build a polished Tetris clone." }),
-                "Ready", "Medium", 0, 3, null, null, null, [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+                "Running", "Medium", 0, 3, null, null, null, [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
             var environmentId = Guid.NewGuid();
             var environment = new Compute.ComputeEnvironment(environmentId, 1, 1, "ready", "ready", "retained",
                 DateTimeOffset.UtcNow, DateTimeOffset.MaxValue, null, "software-developer-workspace");
@@ -204,12 +204,12 @@ public sealed class StagedPlanningTests
             _states[$"development/task/{_item.Id:N}"].Payload.GetProperty("planningDraft")
                 .Deserialize<SoftwareDeveloperAgent.DevelopmentPlanDraft>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
 
-        public async Task<PersonalTodoClaimDecision> EvaluateAsync(ScriptedFactory factory, CancellationToken ct = default)
+        public async Task<PersonalWorkPlan> EvaluateAsync(ScriptedFactory factory, CancellationToken ct = default)
         {
             var agent = new SoftwareDeveloperAgent(factory); // Fresh process-equivalent instance every call.
             await _runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
                 new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test", maxOutputTokens = 131072 } });
-            return await agent.EvaluatePersonalTodoClaimAsync(_item, _runtime.CreateContext(), ct);
+            return await agent.PrepareDevelopmentPlanAsync(_item, _runtime.CreateContext(), ct);
         }
     }
 

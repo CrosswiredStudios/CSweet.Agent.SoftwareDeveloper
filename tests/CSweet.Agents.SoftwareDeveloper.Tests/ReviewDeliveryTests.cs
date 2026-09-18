@@ -23,6 +23,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         var task = f.Item with { Id = Guid.NewGuid(), PlanRootId = f.Item.Id, Kind = "Task", PlanExecution = "Deployment" };
         var payload = JsonNode.Parse(f.State.Payload.GetRawText())!;
         payload["activePlanTaskId"] = JsonValue.Create(task.Id);
+        payload["workspace"]!["workItemId"] = JsonValue.Create(task.Id);
         payload["planRequest"] = JsonSerializer.SerializeToNode(new CreatePersonalWorkPlanRequest(f.Item.Id, "Breakout MVP", [], "plan"));
         payload["outcome"]!["summary"] = "Node/npm unavailable. Dockerfile implementation already exists. HTTP checks could not be executed.";
         f.State = f.State with { Payload = JsonSerializer.SerializeToElement(payload) };
