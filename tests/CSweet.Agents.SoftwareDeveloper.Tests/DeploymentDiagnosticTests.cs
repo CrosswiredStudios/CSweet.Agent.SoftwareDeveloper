@@ -85,4 +85,26 @@ public class DeploymentDiagnosticTests
         Assert.Contains("Request rejected", message);
         Assert.True(message.Length < 2500);
     }
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Workspace_failure_comment_reports_exact_cause_code_recovery_and_diagnostic(bool wrapped)
+    {
+        const string diagnosticId = "11223344556677889900aabbccddeeff";
+        var detail = "workspace.publication_content_changed: The idempotency key was already used with different content. " +
+            "Next step: Reconcile the saved publication and publish changed content with a new operation key. " +
+            $"Diagnostic: {diagnosticId} (HTTP 409).";
+        var input = wrapped ? System.Text.Json.JsonSerializer.Serialize(new { code = "Conflict", error = detail }) : detail;
+        var error = new CSweet.Agent.SDK.PlatformCapabilityException("git.workspace.publish.v2",
+            CSweet.Agent.SDK.PlatformCapabilityErrorCode.Unavailable, input, failureCode: "capability.failed");
+        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(error, "old unrelated error", "Saving source changes");
+        Assert.Contains("**Reported error:** The idempotency key was already used with different content.", message);
+        Assert.Contains("workspace.publication\\_content\\_changed", message);
+        Assert.Contains("**Diagnostic ID:** " + diagnosticId, message);
+        Assert.Contains("**HTTP status:** 409", message);
+        Assert.Contains("### Next step\n\nReconcile the saved publication", message.Replace("\r\n", "\n"));
+        Assert.DoesNotContain("capability.failed", message);
+        Assert.DoesNotContain("restore the required resource", message);
+        Assert.DoesNotContain("old unrelated error", message);
+    }
 }

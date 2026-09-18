@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using CSweet.Agent.SDK;
 
 namespace CSweet.Agents.SoftwareDeveloper;
@@ -67,12 +68,22 @@ public sealed partial class SoftwareDeveloperAgent
             next = "Correct the build or test failure below, then move the blocked ticket to To Do to rebuild and validate the application.";
         }
 
+        var workspaceFailure = platform is not null && platform.Capability.StartsWith("git.workspace.", StringComparison.Ordinal)
+            ? ReadWorkspaceFailure(message) : null;
+        if (workspaceFailure is { } sourceFailure)
+        {
+            headline = "The source-control operation could not finish.";
+            evidence = sourceFailure.Error;
+            next = BlockerExcerpt(sourceFailure.NextStep, 500);
+        }
         var failure = FirstTestFailure(evidence);
         var diagnostic = failure is { } test
             ? $"**First failing check:** {BlockerExcerpt(test.Test, 300)}\n\n**Reported result:** {BlockerExcerpt(test.Detail, 600)}"
             : $"**Reported error:** {BlockerExcerpt(evidence, 1200)}";
         var code = platform is null ? string.Empty
-            : $"\n\n**Failure code:** {BlockerExcerpt(platform.FailureCode ?? platform.Code.ToString(), 160)}";
+            : $"\n\n**Failure code:** {BlockerExcerpt(workspaceFailure?.Code ?? platform.FailureCode ?? platform.Code.ToString(), 160)}";
+        if (workspaceFailure is { } reported)
+            code += $"\n\n**Diagnostic ID:** {reported.DiagnosticId}\n\n**HTTP status:** {reported.HttpStatus}";
         return $"""
 Development is blocked: {headline}
 
@@ -90,6 +101,27 @@ Development is blocked: {headline}
 """;
     }
 
+    private sealed record WorkspaceFailure(string Code, string Error, string NextStep, string DiagnosticId, string HttpStatus);
+
+    private static WorkspaceFailure? ReadWorkspaceFailure(string message)
+    {
+        // Some runtime transports wrap the broker's message in a capability error envelope.
+        if (message.Length > 16_384) return null;
+        try
+        {
+            using var json = JsonDocument.Parse(message);
+            if (json.RootElement.ValueKind == JsonValueKind.Object &&
+                json.RootElement.TryGetProperty("error", out var detail) && detail.ValueKind == JsonValueKind.String)
+                message = detail.GetString()!;
+        }
+        catch (JsonException) { }
+        var match = Regex.Match(message,
+            @"^(?<code>workspace\.[a-z_]{1,64}): (?<error>.+) Next step: (?<next>.+) Diagnostic: (?<id>[a-f0-9]{32}) \(HTTP (?<status>[0-9]{3})\)\.$",
+            RegexOptions.Singleline | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        return match.Success ? new(match.Groups["code"].Value, match.Groups["error"].Value,
+            match.Groups["next"].Value, match.Groups["id"].Value, match.Groups["status"].Value) : null;
+    }
+
     // Diagnostics are untrusted output. Keep useful relative file names, commands, and error
     // codes, but omit credentials, endpoint URLs, absolute host paths, and stack traces.
     private static string BlockerExcerpt(string value, int limit)
@@ -102,7 +134,7 @@ Development is blocked: {headline}
         value = Regex.Replace(value, @"[\x00-\x1f]+", " ").Trim();
         // Prevent diagnostic text from creating Markdown links, images, or HTML.
         value = Regex.Replace(value, @"([\\`*_{}\[\]<>])", @"\$1");
-        return value.Length <= limit ? value : value[..limit] + "…";
+        return value.Length <= limit ? value : value[..limit] + "â€¦";
     }
 
     private static (string Test, string Detail)? FirstTestFailure(string diagnostic)
