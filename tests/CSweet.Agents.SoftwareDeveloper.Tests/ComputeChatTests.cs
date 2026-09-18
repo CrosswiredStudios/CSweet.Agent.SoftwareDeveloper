@@ -8,71 +8,54 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class ComputeChatTests
 {
     [Fact]
-    public async Task Request_asks_ticket_ownership_then_resumes_original_request_after_restart_without_duplicate_tickets()
+    public async Task Request_retains_intake_then_resumes_after_assignment_and_ticket_ownership_choice()
     {
         var f = new Fixture();
-        var agent = await f.AgentAsync("ask");
-        await f.DeliverAsync(agent, "Create and deploy a falling-block puzzle to that instance.");
-        Assert.Equal(0, f.AddCalls); Assert.Equal(1, f.Questions);
-        Assert.Contains("Who", f.Question!.Prompt);
-        f.Answer = "self";
-        agent = await f.AgentAsync("ask"); // No model call should be needed for the answered structured choice.
-        await f.DeliverAsync(agent, "Create your own tickets");
-        Assert.Equal(1, f.AddCalls);
-        Assert.Equal(f.OriginalMessage, f.Item!.SourceMessageId);
-        Assert.Contains("falling-block puzzle", f.Item.Description);
-        Assert.Contains(f.Environment.ToString(), f.Item.Description);
-        await f.DeliverAsync(agent, "Create your own tickets", replay: true);
+        await f.DeliverAsync(await f.AgentAsync("ask"), "Create and deploy a falling-block puzzle to that instance.");
+        Assert.Equal(0, f.AddCalls); Assert.Equal(0, f.Questions);
+        Assert.Equal("ask", f.Pending!.TicketOwner); Assert.Equal(f.OriginalMessage, f.Pending.SourceMessageId);
+        f.Pending = f.Pending with { Status = "Ready", ProjectId = Guid.NewGuid(), BoardId = Guid.NewGuid(), Revision = 2 };
+        await f.DeliverAsync(await f.ChoiceAgentAsync("self"), "Create your own tickets");
+        Assert.Equal(1, f.AddCalls); Assert.Equal(f.OriginalMessage, f.Item!.SourceMessageId);
+        Assert.Contains("falling-block puzzle", f.Item.Description); Assert.Contains(f.Environment.ToString(), f.Item.Description);
+        await f.Runtime.DeliverEventAsync(await f.AgentAsync("self"), ProjectIntakeCapabilities.Changed, new ProjectIntakeChanged(f.Pending.Id, 1));
         Assert.Single(f.Keys);
     }
-
     [Theory]
-    [InlineData("self", 1)]
-    [InlineData("human", 0)]
-    public async Task Explicit_ownership_is_honored_without_another_question(string owner, int expected)
+    [InlineData("self")]
+    [InlineData("human")]
+    public async Task Explicit_ownership_is_retained_without_starting_projectless_work(string owner)
     {
-        var f = new Fixture(); var agent = await f.AgentAsync(owner);
-        await f.DeliverAsync(agent, owner == "self" ? "Build the puzzle and make your own tickets." : "I will make the tickets for the puzzle.");
-        Assert.Equal(expected, f.AddCalls); Assert.Equal(0, f.Questions);
+        var f = new Fixture(); await f.DeliverAsync(await f.AgentAsync(owner), "Build the puzzle.");
+        Assert.Equal(0, f.AddCalls); Assert.Equal(0, f.Questions); Assert.Equal(owner, f.Pending!.TicketOwner);
         Assert.Single(f.Runtime.Progress, x => x.TryGetProperty("isFinal", out var value) && value.GetBoolean());
     }
-
     [Fact]
-    public async Task An_unrelated_human_cannot_resolve_the_requesters_ticket_choice()
+    public async Task Unrelated_human_cannot_resolve_requesters_choice()
     {
-        var f = new Fixture(); var agent = await f.AgentAsync("ask");
-        await f.DeliverAsync(agent, "Build the puzzle");
-        f.Sender = Guid.NewGuid(); f.Answer = "self";
-        await f.DeliverAsync(agent, "Hello");
-        Assert.Equal(0, f.AddCalls);
+        var f = new Fixture(); await f.DeliverAsync(await f.AgentAsync("ask"), "Build the puzzle");
+        var owner = f.Pending!.RequestingHumanId; f.Sender = Guid.NewGuid();
+        await f.DeliverAsync(await f.ChoiceAgentAsync("reply"), "Hello");
+        Assert.Equal(owner, f.Pending.RequestingHumanId); Assert.Equal(0, f.ChooseCalls); Assert.Equal(0, f.AddCalls);
     }
-
     [Fact]
-    public async Task Follow_up_preserves_existing_project_through_ownership_answer_and_restart()
+    public async Task A_personal_epic_is_not_a_project_record()
     {
         var f = new Fixture();
-        var project = new PersonalTodoItem(Guid.NewGuid(), Guid.NewGuid(), f.Developer, f.Sender, "Matt", "Breakout",
+        var oldEpic = new PersonalTodoItem(Guid.NewGuid(), Guid.NewGuid(), f.Developer, f.Sender, "Matt", "Breakout",
             JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = "Build Breakout" }),
             "Completed", "Medium", 0, 1, null, f.Chat, Guid.NewGuid(), [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        project = project with { Kind = "Epic", PlanRootId = project.Id, PlanExecution = "Coordinator" };
-        f.Projects.Add(project);
-        await f.DeliverAsync(await f.AgentAsync("ask", "existing", project.Id), "Fix the missing bricks in Breakout.");
-        Assert.Equal(0, f.AddCalls);
-        f.Answer = "self";
-        await f.DeliverAsync(await f.AgentAsync("ask"), "Create the bug-fix tickets");
-        Assert.Equal(1, f.AddCalls);
-        var terms = JsonSerializer.Deserialize<SoftwareDeveloperAgent.DirectWorkTerms>(f.Item!.Description, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-        Assert.Equal(project.Id, terms!.SourceWorkItemId);
+        f.Projects.Add(oldEpic with { Kind = "Epic", PlanRootId = oldEpic.Id, PlanExecution = "Coordinator" });
+        await f.DeliverAsync(await f.AgentAsync("self", "existing", oldEpic.Id), "Fix the missing bricks.");
+        Assert.Null(f.Pending!.ProjectId); Assert.Equal(0, f.AddCalls); Assert.Equal(0, f.ChooseCalls);
     }
-
     [Theory]
     [InlineData("existing")]
     [InlineData("unclear")]
-    public async Task Unknown_or_ambiguous_project_does_not_create_a_new_application(string mode)
+    public async Task Unknown_project_retains_request_without_delivery_tickets(string mode)
     {
-        var f = new Fixture();
-        await f.DeliverAsync(await f.AgentAsync("self", mode, Guid.NewGuid()), "Fix the bricks");
-        Assert.Equal(0, f.AddCalls);
+        var f = new Fixture(); await f.DeliverAsync(await f.AgentAsync("self", mode, Guid.NewGuid()), "Fix the bricks");
+        Assert.Equal(0, f.AddCalls); Assert.Equal("AwaitingProjectChoice", f.Pending!.Status);
     }
 
     [Theory]
@@ -105,7 +88,8 @@ public sealed class ComputeChatTests
         public readonly Guid Chat = Guid.NewGuid(), Environment = Guid.NewGuid(), Developer = Guid.NewGuid();
         public List<PersonalTodoItem> Projects = [];
         public Guid Sender = Guid.NewGuid(), Message = Guid.NewGuid(), OriginalMessage;
-        public int AddCalls, Questions; public long Sequence;
+        public int AddCalls, Questions, ChooseCalls; public long Sequence;
+        public ProjectIntakeSummary? Pending;
         public string? Answer; public AskUserRequest? Question; public PersonalTodoItem? Item;
         public HashSet<string> Keys = [];
         public AgentTestRuntime Runtime;
@@ -115,6 +99,26 @@ public sealed class ComputeChatTests
         {
             history.Add(new(Guid.NewGuid(), 0, Chat, Guid.NewGuid(), "Daniel", "Agent", $"Environment: {Environment:D}", DateTimeOffset.UtcNow));
             Runtime = new AgentTestRuntime()
+                .RegisterCapability<object, IReadOnlyList<ProjectIntakeSummary>>(ProjectIntakeCapabilities.List, (_, _) => Task.FromResult<IReadOnlyList<ProjectIntakeSummary>>(Pending is { Status: not ("Started" or "Cancelled") } ? [Pending] : []))
+                .RegisterCapability<RetainProjectIntakeRequest, ProjectIntakeSummary>(ProjectIntakeCapabilities.Retain, (r, _) => {
+                    Pending ??= new(Guid.NewGuid(), r.Name, r.Goal, "AwaitingProjectChoice", r.TicketOwner, Sender, Developer, null, null, null, null, null, Chat, r.SourceMessageId, 1, "/projects/new?intake=opaque", null);
+                    return Task.FromResult(Pending);
+                })
+                .RegisterCapability<ProjectIntakeReference, ProjectIntakeSummary>(ProjectIntakeCapabilities.Read, (r, _) => Task.FromResult(Pending!))
+                .RegisterCapability<ProjectIntakeReference, IReadOnlyList<ProjectCandidate>>(ProjectIntakeCapabilities.Discover, (r, _) => Task.FromResult<IReadOnlyList<ProjectCandidate>>([]))
+                .RegisterCapability<ChooseProjectIntakeRequest, ProjectIntakeSummary>(ProjectIntakeCapabilities.Choose, (r, _) => {
+                    Assert.Equal(Pending!.RequestingHumanId, Sender); Assert.Equal(Pending.Revision, r.ExpectedRevision); Assert.Equal(Message, r.SourceMessageId);
+                    ChooseCalls++; Pending = Pending with { TicketOwner = r.Choice, Revision = Pending.Revision + 1 }; return Task.FromResult(Pending);
+                })
+                .RegisterCapability<StartProjectIntakeRequest, PersonalTodoItem>(ProjectIntakeCapabilities.Start, (r, _) => {
+                    Assert.Equal("Ready", Pending!.Status); Assert.Equal("self", Pending.TicketOwner);
+                    if (Keys.Add(r.IdempotencyKey)) AddCalls++;
+                    Item ??= new(Guid.NewGuid(), Pending.BoardId!.Value, Developer, Sender, "Matt", Pending.Name,
+                        JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = Pending.Goal, environmentId = Environment }),
+                        "Ready", "Medium", 0, 1, null, Chat, Pending.SourceMessageId, [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+                    Pending = Pending with { Status = "Started", RootItemId = Item.Id, Revision = Pending.Revision + 1 }; return Task.FromResult(Item);
+                })
+                .RegisterCapability<JsonElement, object>(CommunicationCapabilities.MessageSend, (_, _) => Task.FromResult<object>(new { }))
                 .RegisterCapability<JsonElement, IReadOnlyList<TaskReviewResult>>(TaskDeliveryCapabilities.List, (_, _) => Task.FromResult<IReadOnlyList<TaskReviewResult>>([]))
                 .RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) =>
                     Task.FromResult(new PersonalTodoDirectory([new(Guid.NewGuid(), Developer, "Daniel", null, null, 1, Projects)], Developer)))
@@ -146,6 +150,13 @@ public sealed class ComputeChatTests
             var client = new Client(JsonSerializer.Serialize(new { intent = "work", reply = "", request = "Create a falling-block puzzle.",
                 title = "Build puzzle", owner, environmentId = Environment, projectMode, sourceWorkItemId }));
             var agent = new SoftwareDeveloperAgent(new Factory(client));
+            await Runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
+                new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test" } });
+            return agent;
+        }
+        public async Task<SoftwareDeveloperAgent> ChoiceAgentAsync(string intent)
+        {
+            var agent = new SoftwareDeveloperAgent(new Factory(new Client(JsonSerializer.Serialize(new { intent, reply = "Hello", projectId = (Guid?)null }))));
             await Runtime.ExecuteCapabilityAsync(agent, AgentConfigurationCapabilities.Update,
                 new { settings = new { llmProviderId = Guid.NewGuid(), llmModel = "test" } });
             return agent;

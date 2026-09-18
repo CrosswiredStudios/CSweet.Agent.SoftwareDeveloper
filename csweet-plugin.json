@@ -4,13 +4,14 @@
   "kind": "agent",
   "rolePolicy": {
     "profile": "individual-contributor.v1",
+    "requiresProject": true,
     "declaredRoleKeys": [
       "software-developer"
     ]
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.10.1",
+  "version": "1.11.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -445,6 +446,14 @@
     }
   ],
   "requires": [
+    {"name": "work.project-intake.retain.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.read.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.list.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.discover.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.choose.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.start.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+    {"name": "work.project-intake.manager-request.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
+
     {
       "name": "work.calendar.read.v1",
       "scope": "organization",
@@ -765,6 +774,7 @@
   ],
   "events": {
     "subscribes": [
+      "com.csweet.project-intake.changed.v1",
       "com.csweet.agent.onboarded.v1",
       "com.csweet.calendar.reminder-due.v1",
       "com.csweet.work.personal-todo.available.v1",

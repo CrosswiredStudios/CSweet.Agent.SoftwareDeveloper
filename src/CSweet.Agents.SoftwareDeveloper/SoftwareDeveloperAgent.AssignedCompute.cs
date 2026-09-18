@@ -24,7 +24,7 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
     {
         if (!RequiresDevelopmentCompute(item)) return PersonalTodoClaimDecision.Claim;
 
-        var compute = await EnsureAssignedComputeAsync(context, cancellationToken);
+        var compute = await EnsureAssignedComputeAsync(context, cancellationToken, projectId: item.WorkContext?.WorkstreamId);
 
         // The SDK claims the ticket (and moves it to Doing) before the callback plans work.
         // Claim policy only checks prerequisites; it must not run model inference.
@@ -36,8 +36,9 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
         item.PlanExecution is "Implementation" or "Validation" or "Deployment";
 
     private async Task<AssignedComputeReadiness> EnsureAssignedComputeAsync(
-        AgentRuntimeContext context, CancellationToken cancellationToken, bool notifyManager = true)
+        AgentRuntimeContext context, CancellationToken cancellationToken, bool notifyManager = true, Guid? projectId = null)
     {
+        if (projectId.HasValue) return await EnsureProjectComputeAsync(projectId.Value, context, cancellationToken);
         var retained = await context.Platform.ReadOperatingStateAsync<AssignedComputeState>(
             AssignedComputeStateKey, cancellationToken);
         if (retained is not null && (!string.Equals(retained.StateKey, AssignedComputeStateKey, StringComparison.Ordinal) ||
@@ -90,6 +91,31 @@ public sealed partial class SoftwareDeveloperAgent : IPersonalTodoClaimPolicy
         state = state with { EnvironmentId = environment.Id, WorkstreamId = workstreamId, TemplateId = templateId };
         await SaveAssignedComputeAsync(state, retained, context, cancellationToken);
         return new(string.Equals(environment.State, "ready", StringComparison.OrdinalIgnoreCase), environment, environment.FailureCode);
+    }
+
+    private async Task<AssignedComputeReadiness> EnsureProjectComputeAsync(Guid project, AgentRuntimeContext context, CancellationToken ct)
+    {
+        var key = $"development/project-compute/{project:N}";
+        var retained = await context.Platform.ReadOperatingStateAsync<AssignedComputeState>(key, ct);
+        var state = retained?.Payload ?? new();
+        if (state.EnvironmentId is { } id)
+        {
+            var current = await context.Platform.Compute.ReadAsync(id, ct);
+            if (current.State == "ready" && current.LeaseExpiresAt > DateTimeOffset.UtcNow) return new(true, current, null);
+            if (current.State is not ("destroyed" or "failed") && current.LeaseExpiresAt > DateTimeOffset.UtcNow) return new(false, current, current.FailureCode);
+            if (state.ReplacementGeneration >= Settings.GetInt32("maximumComputeReplacements", 3)) return new(false, current, "replacement-limit-reached");
+            state = state with { EnvironmentId = null, ReplacementGeneration = state.ReplacementGeneration + 1 };
+        }
+        var defaults = await context.Platform.Compute.GetProjectDefaultsAsync(project, ct);
+        if (defaults is not { State: "Ready", TemplateId: { } template }) return new(false, null, defaults.ErrorCode);
+        var desired = $"project:{project:N}:developer:{context.InstallationId}:generation:{state.ReplacementGeneration}";
+        var environment = await context.Platform.Compute.ProvisionAsync(new(project, desired, desired,
+            new ComputeSpecification("linux", "x64", template, new(2, 2048, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), ct);
+        state = state with { EnvironmentId = environment.Id, WorkstreamId = project, TemplateId = template };
+        await context.Platform.WriteOperatingStateAsync(new WriteAgentOperatingStateRequest<AssignedComputeState>(key,
+            "software-developer.project-compute", 1, "Active", new Dictionary<string,string>(), [], "project-compute", [key], project,
+            state, retained?.Revision, $"{key}:{(retained?.Revision ?? 0) + 1}"), ct);
+        return new(environment.State == "ready", environment, environment.FailureCode);
     }
 
     private async Task NotifyManagerOnceAsync(AssignedComputeState state,

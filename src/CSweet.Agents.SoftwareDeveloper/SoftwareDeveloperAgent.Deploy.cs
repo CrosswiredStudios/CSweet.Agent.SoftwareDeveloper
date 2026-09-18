@@ -267,7 +267,7 @@ Include README instructions and test coverage for the requested behavior. The pl
             try
             {
                 currentStep = "Preparing the assigned Linux test instance";
-                var assignedCompute = await EnsureAssignedComputeAsync(context, ct);
+                var assignedCompute = await EnsureAssignedComputeAsync(context, ct, projectId: item.WorkContext?.WorkstreamId);
                 if (!assignedCompute.Ready || assignedCompute.Environment is null)
                     return Wait("Waiting for the assigned Linux development workspace. Source code and tests are saved.");
                 if (state.EnvironmentId != assignedCompute.Environment.Id)

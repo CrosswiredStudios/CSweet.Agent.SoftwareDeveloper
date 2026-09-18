@@ -17,6 +17,8 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleAttentionReviewAsync(AgentAttentionReviewContext review, AgentRuntimeContext context, CancellationToken ct)
     {
+        foreach (var intake in await context.Platform.Projects.ListAsync(ct))
+            await ResumeProjectIntakeAsync(intake, context, ct);
         var pending = await context.Platform.SourceControl.ListTaskReviewsAsync(ct);
         var directory = await context.Platform.PersonalTodo.ListAsync(ct);
         foreach (var rootId in pending.Where(x => x.Status == "ChangesRequested").Select(x => x.RootItemId).Distinct().Take(32))
@@ -29,6 +31,13 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token)
     {
+        if (message.EventType == ProjectIntakeCapabilities.Changed)
+        {
+            var hint = message.Data.Deserialize<ProjectIntakeChanged>(SerializerOptions) ?? throw new JsonException("Missing project intake event.");
+            var intake = await context.Platform.Projects.ReadAsync(hint.IntakeId, token);
+            await ResumeProjectIntakeAsync(intake, context, token);
+            return;
+        }
         if (message.EventType == TaskDeliveryCapabilities.Changed)
         {
             var hint = message.Data.Deserialize<TaskReviewChanged>(SerializerOptions) ?? throw new JsonException("Missing task review event.");
@@ -43,28 +52,14 @@ public sealed partial class SoftwareDeveloperAgent
         {
             var onboarding = message.Data.Deserialize<AgentOnboardedEvent>(SerializerOptions)
                 ?? throw new JsonException("Onboarding event is missing.");
-            try { await EnsureAssignedComputeAsync(context, token, notifyManager: false); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Exception error)
-            {
-                _logger.LogWarning(error, "Assigned compute is unavailable during onboarding; continuing in planning-only mode.");
-            }
             await context.Platform.Communication.SendMessageAsync(onboarding.ConversationId,
-                "Hi, IÃ¢â‚¬â„¢m Daniel Kim, your software developer. IÃ¢â‚¬â„¢m getting my workspace ready. Tell me what youÃ¢â‚¬â„¢d like to build, and we can start planning.",
+                "Hi, I'm Daniel Kim, your software developer. Tell me what you'd like to build. We'll choose a project and confirm my assignment before I create delivery tickets or start development.",
                 $"software-developer-onboarding:{message.EventId:N}", token);
-            try { await EnsureAssignedComputeAsync(context, token); }
-            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
-            catch (Exception error)
-            {
-                _logger.LogWarning(error, "Assigned compute incident notification could not complete during onboarding.");
-            }
             await context.Platform.Lifecycle.CompleteOnboardingAsync(message, token);
             return;
         }
         if (message.EventType == ComputeEvents.Available)
         {
-            try { await EnsureAssignedComputeAsync(context, token); }
-            catch (PlatformCapabilityException) { /* Legacy runtimes continue their existing wake handling. */ }
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
                          .SelectMany(b => b.Items).Where(x => (x.Title == DemoTitle || IsDirectWork(x)) && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
@@ -73,8 +68,6 @@ public sealed partial class SoftwareDeveloperAgent
         }
         if (message.EventType == ComputeEvents.Changed)
         {
-            try { await EnsureAssignedComputeAsync(context, token); }
-            catch (PlatformCapabilityException) { /* Legacy runtimes continue their existing wake handling. */ }
             var change = message.Data.Deserialize<ComputeChangedEvent>(SerializerOptions) ?? throw new JsonException("Compute event is missing.");
             var environment = await context.Platform.Compute.ReadAsync(change.EnvironmentId, token);
             var directDirectory = await context.Platform.PersonalTodo.ListAsync(token);

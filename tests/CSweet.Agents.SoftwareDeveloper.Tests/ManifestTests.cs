@@ -44,13 +44,14 @@ public sealed class ManifestTests
         using var document = JsonDocument.Parse(
             File.ReadAllText(Path.Combine(RepositoryRoot(), "csweet-plugin.json")));
         var root = document.RootElement;
+        Assert.True(root.GetProperty("rolePolicy").GetProperty("requiresProject").GetBoolean());
         var required = root.GetProperty("requires")
             .EnumerateArray()
             .Select(item => item.GetProperty("name").GetString()!)
             .ToArray();
 
         Assert.Equal(
-            ["work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1", 
+            [ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1", 
                 PersonalTodoCapabilities.Read,
                 PersonalTodoCapabilities.Add,
                 PersonalTodoCapabilities.Reorder,
@@ -90,7 +91,7 @@ public sealed class ManifestTests
         Assert.Equal("Allowlist", root.GetProperty("webAccess").GetProperty("mode").GetString());
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
         Assert.Equal(
-            [AgentLifecycleEvents.Onboarded, "com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
+            [ProjectIntakeCapabilities.Changed, AgentLifecycleEvents.Onboarded, "com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentCoordinationEvents.TurnRequested, CommunicationEvents.MessageReceived, "com.csweet.compute.changed.v1", "com.csweet.compute.available.v1", TaskDeliveryCapabilities.Changed],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(item => item.GetString()!).ToArray());

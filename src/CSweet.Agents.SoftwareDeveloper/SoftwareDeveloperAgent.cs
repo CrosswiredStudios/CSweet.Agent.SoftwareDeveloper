@@ -92,6 +92,17 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        if (request.SourceKind == "ProjectIntake")
+        {
+            var artifact = request.Transcript.Select(x => x.Artifact).FirstOrDefault(x => x?.Type == "project-manager-assistance.v1");
+            var assistance = artifact?.Payload.Deserialize<ProjectManagerAssistanceRequest>(new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            if (assistance is null) return AgentCoordinationTurnResult.Blocked("The project setup reference is missing.");
+            var intake = await context.Platform.Projects.ReadAsync(assistance.IntakeId, cancellationToken);
+            await ResumeProjectIntakeAsync(intake, context, cancellationToken);
+            return AgentCoordinationTurnResult.Completed(intake.Status is "Ready" or "Started"
+                ? "The project and my assignment are confirmed. I'll continue the retained request."
+                : intake.Issue ?? "I'm keeping the request while project setup and my assignment are completed.");
+        }
         if (!string.Equals(request.SourceKind, "WorkItem", StringComparison.Ordinal) ||
             request.WorkSource is not { } source)
             return AgentCoordinationTurnResult.Blocked(
@@ -362,7 +373,8 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 
         try
         {
-            var assignedCompute = await EnsureAssignedComputeAsync(context, cancellationToken);
+            var projectBoard = await context.Platform.Work.ReadBoardAsync(boardId, cancellationToken);
+            var assignedCompute = await EnsureAssignedComputeAsync(context, cancellationToken, projectId: projectBoard.Board.WorkstreamId);
             if (!assignedCompute.Ready)
                 throw new InvalidOperationException("compute-unavailable: the assigned Linux development workspace is not Ready.");
         }
