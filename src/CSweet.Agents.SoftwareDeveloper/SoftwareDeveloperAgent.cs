@@ -213,7 +213,7 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 
         try
         {
-            var workspacePath = Path.GetFullPath("/workspace");
+            var workspacePath = EnsureDirectWorkspacePath();
             await using var shell = SoftwareDeveloperHarness.CreateShell(workspacePath);
 
             var selection = new AgentLlmSelection(providerProfileId.Value, model);
@@ -733,6 +733,29 @@ Pull request: {publication.PullRequestUrl}
         if (values.Any(value => value.Length > MaxListItemLength))
             return $"{name} items must be at most {MaxListItemLength} characters.";
         return null;
+    }
+
+    private static string EnsureDirectWorkspacePath()
+    {
+        // The direct (non-orchestrated) implementation path has no platform-prepared
+        // assignment workspace. Use the container assignment root when it exists;
+        // otherwise fall back to an isolated temp directory so harness construction
+        // never depends on a host-specific directory existing (e.g. CI runners).
+        const string containerWorkspace = "/workspace";
+        try
+        {
+            if (Directory.Exists(containerWorkspace))
+                return Path.GetFullPath(containerWorkspace);
+        }
+        catch (Exception)
+        {
+            // Fall through to the isolated temp workspace below.
+        }
+
+        var fallback = Path.Combine(
+            Path.GetTempPath(), "csweet-direct-workspace-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(fallback);
+        return fallback;
     }
 
     private static string BuildPrompt(Guid workId, SoftwareDevelopmentRequest input)
