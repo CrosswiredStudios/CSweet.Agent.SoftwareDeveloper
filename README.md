@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.11.2`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.11.3`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
