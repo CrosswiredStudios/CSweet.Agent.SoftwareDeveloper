@@ -3,7 +3,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.11.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.11.2`
 and uses C-Sweet manifest protocol v2.
 
 ## What it does
@@ -268,7 +268,7 @@ ordering, restart recovery and preservation of technical evidence. Existing depl
 tests cover failed command outcomes and bounded repairs. Update the agent for future work;
 this release does not retroactively repair generated applications or rewrite historical messages.
 
-## Project continuity and planning status (1.11.1)
+## Project continuity and planning status (1.11.0)
 
 `EvaluatePersonalTodoClaimAsync` only checks compute prerequisites. The SDK claims the root ticket
 and moves it to Doing before `PrepareDevelopmentPlanAsync` invokes the model. Planning checkpoints
