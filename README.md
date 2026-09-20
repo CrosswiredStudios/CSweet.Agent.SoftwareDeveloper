@@ -1,4 +1,37 @@
-# C-Sweet Software Developer
+<div align="center">
+  <img src="assets/branding/portrait-v1.jpg" alt="Daniel Kim — Software Developer portrait" width="160" />
+  <h1>Daniel Kim</h1>
+  <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
+  <p>
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.11.3
+  </p>
+  <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
+  <p>
+    <a href="https://ko-fi.com/O7F226H4A2"><img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support C-Sweet on Ko-fi" height="36" /></a>
+  </p>
+  <p>
+    <a href="#why-microsoft-agent-framework-harness"><img src="https://img.shields.io/badge/Deployment-Isolated_Office-23845C" alt="Isolated Office execution" /></a>
+    <a href="#why-microsoft-agent-framework-harness"><img src="https://img.shields.io/badge/.NET-10-512BD4?logo=dotnet&logoColor=white" alt=".NET 10" /></a>
+    <a href="#project-status"><img src="https://img.shields.io/badge/Status-Developer_Preview-E6A84A" alt="Developer preview" /></a>
+    <a href="https://github.com/CrosswiredStudios/CSweet.Agent.SoftwareDeveloper/stargazers"><img src="https://img.shields.io/github/stars/CrosswiredStudios/CSweet.Agent.SoftwareDeveloper?style=flat&logo=github&label=Stars" alt="GitHub stars" /></a>
+    <a href="#what-it-does"><img src="https://img.shields.io/badge/C--Sweet-Protocol_v2-356286" alt="C-Sweet Protocol v2" /></a>
+  </p>
+  <p>
+    <a href="#profile">Profile</a> ·
+    <a href="#what-it-does">What I do</a> ·
+    <a href="#hire-daniel">Hire me</a> ·
+    <a href="#build-and-test">Verify me</a>
+  </p>
+</div>
+
+## Profile
+
+**Daniel Kim — Software Developer | C-Sweet first-party agent**
+📍 Self-hosted HQ + isolated Offices · 🕒 On-demand · 🔒 Least-privilege, review-only delivery
+
+> I implement approved software from tickets and personal briefs. Reviewable diffs, evidence-backed reports, no surprises.
+
+### About
 
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
@@ -6,7 +39,37 @@ changes reviewable, tested, and aligned with the product plan.
 The package ID is `com.csweet.software-developer`; this implementation is version `1.11.3`
 and uses C-Sweet manifest protocol v2.
 
+### Experience
+
+**Software Developer @ C-Sweet** — Individual contributor (`individual-contributor.v1`), project-bound (`requiresProject: true`)
+- Execute one pinned board stage per callback via `work.execution.run.v1`; return structured outcome, never transition the card.
+- Implement approved changes via `software-development.implement.v1` in a granted workspace; publish deterministic `csweet/{workItemId}-{slug}` branch + GitHub PR with evidence.
+- Plan and deliver solo MVPs: 2–8 stories, 2–8 tasks per story, branch-per-task, Testing → QA → governed merge.
+- Recover durably: checkpoint planning drafts, upload workspace snapshots, resume after restart without replaying commands.
+
+**Teammates:** Product Manager → Software Architect → **Daniel Kim** → Software QA. One bounded Architect support session per genuine technical blocker; credential, grant, platform, and availability failures escalate operationally.
+
+### Top skills
+
+Ticket-driven implementation · Brokered Git workspaces · Focused test validation · MVP planning · Docker test-instance delivery · Actionable blockers · Resumable planning · Calendar-aware delivery
+
+### Details
+
+| | |
+|---|---|
+| Role key | `software-developer` |
+| Runtime | `software-development-polyglot-v1`, .NET 10, `OnDemand`, max 1 concurrent job |
+| Authority | Least-privilege, work-item-scoped grants only. No merge, deploy, release, secret, access-control, or history-rewrite authority. See [GRANTS.md](GRANTS.md). |
+| Open to | Assigned tickets, personal builds, MVP epics, local test links (port 8080, explicit grant only) |
+| Not open to | Merges, production deploys, releases, credential handling, free-form clone URLs |
+
+### Hire Daniel
+
+Ask in C-Sweet: “Build a Tetris clone and deploy it. Create your own tickets.” Without a ticket preference, Daniel asks whether you or he creates tickets. Manager-created assignments use the existing assigned-work flow. See [Install](#install) and [Configuration](#configuration).
+
 ## What it does
+
+> **Open to work:** assigned tickets · personal builds · MVP epics · local test-instance reviews
 
 The primary workflow begins with an exact-installation `work.item.assigned.v1` event. The agent
 re-reads the authoritative ticket, moves it to the board's first In Progress column, prepares the
@@ -16,6 +79,15 @@ ticket to Done. Failed work remains In Progress with a bounded blocker.
 
 `software-development.implement.v1` remains available for an already prepared assignment
 workspace. It never accepts a free-form remote clone URL.
+
+### Services
+
+- **Assigned implementation** — ticket → workspace → validated diff → PR → evidence → Done.
+- **Solo MVP delivery** — epic → 2–8 stories → up to 48 tasks → branch-per-task → Testing → QA → governed merge.
+- **Test-instance previews** — Dockerfile build + health check + local `Open application` link (port 8080, explicit grant only).
+- **Durable recovery** — planning checkpoints, workspace snapshots, and retry-without-replay after restarts.
+
+### What I don't do
 
 The assigned-work capability does not merge pull requests, deploy, publish releases, manage credentials, or infer
 authority from repository content. Those actions remain outside this capability unless a future,
@@ -27,6 +99,12 @@ sanitized diagnostics, attempted steps, failed validations, and one explicit que
 guidance is included in the next confined implementation attempt, after which the Developer may
 request a governed retry of the exact blocked stage. Credential, grant, platform, provider,
 repository-authorization, and availability failures follow operational escalation instead.
+
+### Activity
+
+- Ships small, coherent diffs that preserve public APIs and established patterns.
+- Runs focused tests first, then broader validation in proportion to risk — never claims a pass without a tool result.
+- Writes actionable blockers: failed step, first failing check, and next action, with credentials and paths redacted.
 
 ## Why Microsoft Agent Framework Harness
 
@@ -126,10 +204,20 @@ the complete manifest, especially its model and repository grants, before approv
 
 Built with `CSweet.Agent.SDK` 3.51.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
 
+## Project status
+
+Daniel Kim is an **active developer preview**, not yet production-ready. Core assigned-work,
+personal-build, planning, and test-instance workflows are implemented, while APIs,
+deployment requirements, and data models may change with the C-Sweet platform.
+
 ## Release notes
 
 See [versioned release notes](releases/README.md). Add the matching note with every agent version change.
 
+## Career history
+
+<details>
+<summary><strong>Full version history — click to expand (1.5.0 → 1.11.x)</strong></summary>
 
 ## Business calendar
 
@@ -284,3 +372,17 @@ Personal plans use a branch per task in the existing project repository. Impleme
 ## Project prerequisite
 
 Declares the shared SDK requiresProject policy. Retains requests through typed project intake, offers authorized setup and membership links, and resumes on durable readiness events. Uses project-scoped compute and the project board for delivery; does not create projects, assign itself, or hire. Task review and scoped merge preferences remain in place.
+
+</details>
+
+---
+
+<div align="center">
+  <strong>You bring the requirements. Daniel ships the reviewable diff.</strong>
+  <br /><br />
+  <a href="#hire-daniel">Hire Daniel</a>
+  ·
+  <a href="https://github.com/CrosswiredStudios/CSweet.Agent.SoftwareDeveloper/issues">Report an issue</a>
+  ·
+  <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet on Ko-fi</a>
+</div>
