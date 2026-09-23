@@ -50,10 +50,15 @@ public sealed partial class SoftwareDeveloperAgent
         }
         if (message.EventType == AgentLifecycleEvents.Onboarded)
         {
-            var onboarding = message.Data.Deserialize<AgentOnboardedEvent>(SerializerOptions)
+            _ = message.Data.Deserialize<AgentOnboardedEvent>(SerializerOptions)
                 ?? throw new JsonException("Onboarding event is missing.");
-            await context.Platform.Communication.SendMessageAsync(onboarding.ConversationId,
-                "Hi, I'm Daniel Kim, your software developer. Tell me what you'd like to build. We'll choose a project and confirm my assignment before I create delivery tickets or start development.",
+            if (!Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId))
+                throw new InvalidOperationException(
+                    "Software Developer onboarding requires an assigned manager.");
+
+            // Individual-contributor onboarding follows the current reporting line, not the hiring conversation.
+            await context.Platform.Communication.SendDirectMessageAsync(managerId,
+                "Hi, I'm Daniel Kim, your software developer. I'm ready for approved requirements and implementation assignments. I'll keep changes reviewable, tested, and within the project scope you assign.",
                 $"software-developer-onboarding:{message.EventId:N}", token);
             await context.Platform.Lifecycle.CompleteOnboardingAsync(message, token);
             return;

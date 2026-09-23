@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.11.3",
+  "version": "1.11.4",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -684,13 +684,13 @@
     {
       "name": "agent.onboarding.complete.v1",
       "scope": "organization",
-      "purpose": "Acknowledge onboarding only after Daniel has requested compute and sent his introduction.",
+      "purpose": "Acknowledge onboarding only after Daniel has introduced himself to his assigned manager.",
       "modelVisible": false
     },
     {
       "name": "communication.chat.create.v1",
       "scope": "organization",
-      "purpose": "Create or reuse a direct chat with the assigned manager for one compute blocker message per incident.",
+      "purpose": "Create or reuse a direct chat with the assigned manager for onboarding and one compute blocker message per incident.",
       "modelVisible": false
     },
     {
