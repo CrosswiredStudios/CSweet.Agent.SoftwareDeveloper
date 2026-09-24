@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.11.4
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.11.9
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.11.4`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.11.9`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -68,6 +68,9 @@ Ticket-driven implementation · Brokered Git workspaces · Focused test validati
 Ask in C-Sweet: “Build a Tetris clone and deploy it. Create your own tickets.” Without a ticket preference, Daniel asks whether you or he creates tickets. Manager-created assignments use the existing assigned-work flow. See [Install](#install) and [Configuration](#configuration).
 
 ## What it does
+
+See the [Software Developer operating guide](docs/software-developer-operating-guide.md) for the role's lifecycle, jobs, and readiness and work-start gates.
+See the [agent abstraction boundaries](docs/agent-abstraction-boundaries.md) for what belongs in the SDK, optional composition framework, and role repository.
 
 > **Open to work:** assigned tickets · personal builds · MVP epics · local test-instance reviews
 

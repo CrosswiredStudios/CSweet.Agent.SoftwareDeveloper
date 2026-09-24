@@ -9,7 +9,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 public sealed partial class SoftwareDeveloperAgent
 {
-    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    internal static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     internal const string DemoTitle = "Create a Hello World application and return its running test link";
     internal const string DemoMarker = "csweet-linux-hello-v1";
     internal static readonly string[] ComputeCapabilities = ["compute.provision.v1", "compute.read.v1", "compute.list.v1",
@@ -46,21 +46,6 @@ public sealed partial class SoftwareDeveloperAgent
             var root = board.Boards.Where(x => x.OwnerOrganizationUserId == board.CurrentOrganizationUserId).SelectMany(x => x.Items)
                 .SingleOrDefault(x => x.Id == hint.RootItemId && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null);
             if (root is not null) await WakeDemoAsync(root, context, token);
-            return;
-        }
-        if (message.EventType == AgentLifecycleEvents.Onboarded)
-        {
-            _ = message.Data.Deserialize<AgentOnboardedEvent>(SerializerOptions)
-                ?? throw new JsonException("Onboarding event is missing.");
-            if (!Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId))
-                throw new InvalidOperationException(
-                    "Software Developer onboarding requires an assigned manager.");
-
-            // Individual-contributor onboarding follows the current reporting line, not the hiring conversation.
-            await context.Platform.Communication.SendDirectMessageAsync(managerId,
-                "Hi, I'm Daniel Kim, your software developer. I'm ready for approved requirements and implementation assignments. I'll keep changes reviewable, tested, and within the project scope you assign.",
-                $"software-developer-onboarding:{message.EventId:N}", token);
-            await context.Platform.Lifecycle.CompleteOnboardingAsync(message, token);
             return;
         }
         if (message.EventType == ComputeEvents.Available)
@@ -105,7 +90,11 @@ public sealed partial class SoftwareDeveloperAgent
             if (hint is null || !Guid.TryParse(hint.ConversationId, out chatId)) return;
             messageId = hint.MessageId;
         }
-        else return;
+        else
+        {
+            await base.HandleEventAsync(message, context, token);
+            return;
+        }
         if (chatId == Guid.Empty || messageId == Guid.Empty) return;
         var chat = await context.Platform.Communication.ReadChatAsync(chatId, token);
         var source = chat.Messages.SingleOrDefault(x => x.Id == messageId && x.ChatId == chatId);

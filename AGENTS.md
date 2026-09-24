@@ -20,6 +20,10 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 - Unknown capabilities and events must fail or be ignored safely without leaking sensitive data.
 - Follow the canonical `AGENT_AUTHORING.md` distributed with `CSweet.Agent.SDK`; this repository
   must remain independently buildable and must not add a source-tree reference to the SDK checkout.
+- Before making edits in this agent project, read the SDK guidance for the area being changed:
+  `docs/capabilities-and-events.md` (lifecycle events, including `OnOnboardedAsync`), 
+  `docs/creating-an-agent.md` (event-hook patterns), and `docs/agent-operating-contract.md`
+  (callback durability and idempotency). SDK mechanics first, role policy second.
 - Use the Microsoft Agent Framework harness only with `context.CreateChatClient(...)`.
 - Root harness file access at the assignment directory with `FileSystemAgentFileStore`. Enable
   `LocalShellExecutor` only with `ConfineWorkingDirectory = true` and the unattended deny policy.
