@@ -102,7 +102,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
     [Fact]
     public void Review_message_puts_visible_url_first_and_explains_local_access_and_expiry()
     {
-        var message = SoftwareDeveloperAgent.ReviewDeliveryMessage("Game", "http://127.0.0.1:4000/",
+        var message = DevelopmentDelivery.ReviewDeliveryMessage("Game", "http://127.0.0.1:4000/",
             new DateTimeOffset(2026, 9, 18, 12, 0, 0, TimeSpan.Zero), "/source", "/board");
         Assert.StartsWith("Your review build is running: **[http://127.0.0.1:4000/", message);
         Assert.Contains("computer hosting", message);

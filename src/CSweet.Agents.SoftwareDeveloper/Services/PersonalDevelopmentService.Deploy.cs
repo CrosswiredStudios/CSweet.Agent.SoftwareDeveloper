@@ -1,5 +1,3 @@
-using System.Formats.Tar;
-using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -11,19 +9,31 @@ using Microsoft.Extensions.AI;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
-public sealed partial class SoftwareDeveloperAgent
+internal sealed partial class PersonalDevelopmentService
 {
-    private sealed record DeploymentState(GitWorkspaceResult? Workspace = null, SoftwareDevelopmentOutcome? Outcome = null,
+    private static readonly JsonSerializerOptions _serializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly AgentSettings _settings;
+    private readonly DevelopmentChatClientProvider _chatClients;
+
+    internal PersonalDevelopmentService(AgentSettings settings, DevelopmentChatClientProvider chatClients)
+    {
+        _settings = settings;
+        _chatClients = chatClients;
+    }
+
+    internal sealed record DirectWorkTerms(string Kind, string Request, Guid? EnvironmentId, Guid? SourceWorkItemId = null);
+
+    internal sealed record DeploymentState(GitWorkspaceResult? Workspace = null, SoftwareDevelopmentOutcome? Outcome = null,
         GitWorkspacePublication? Publication = null, string? BundleDigest = null, int BundleBytes = 0, int Offset = 0,
         Guid? EnvironmentId = null, Guid? WorkstreamId = null, string? TemplateId = null,
         int Step = 0, string Stage = "Code", PendingDeploymentCommand? Pending = null, string? Result = null,
         long? PublicationGeneration = null, int RepairAttempt = 0, string? LastFailure = null, int ReplacementAttempt = 0, CreatePersonalWorkPlanRequest? PlanRequest = null,
         Guid? ActivePlanTaskId = null, SoftwareDevelopmentOutcome? LastPlanOutcome = null,
         int PlanRepairAttempt = 0, string? PlanFailure = null, bool UntilReleaseRecoveryUsed = false,
-        PendingPlanCompletion? PlanCompletion = null, DevelopmentPlanDraft? PlanningDraft = null, int ReviewRepairAttempt = 0);
-    private sealed record PendingPlanCompletion(Guid TaskId, long TaskRevision, SoftwareDevelopmentOutcome Outcome,
+        PendingPlanCompletion? PlanCompletion = null, DevelopmentPlanningService.DevelopmentPlanDraft? PlanningDraft = null, int ReviewRepairAttempt = 0);
+    internal sealed record PendingPlanCompletion(Guid TaskId, long TaskRevision, SoftwareDevelopmentOutcome Outcome,
         GitWorkspacePublication? Checkpoint = null);
-    private sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
+    internal sealed record PendingDeploymentCommand(ExecuteComputeCommandRequest Request, string Stage, int NextOffset);
     private const int DeploymentChunkBytes = 8192;
 
     internal static string DeploymentFailureExcerpt(string stdout, string stderr, int characters)
@@ -36,15 +46,15 @@ public sealed partial class SoftwareDeveloperAgent
     internal static string DeploymentFailureFingerprint(string diagnostic) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(diagnostic)));
 
-    private async Task<PersonalTodoResult> AdvanceDirectWorkAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken ct)
+    internal async Task<PersonalTodoResult> AdvanceAsync(PersonalTodoItem item, AgentRuntimeContext context, CancellationToken ct)
     {
         var currentStep = "Reading the retained development request";
         var prefix = $"direct:{item.Id:N}";
         var stateKey = $"development/task/{item.Id:N}";
         var retained = await context.Platform.ReadOperatingStateAsync<DeploymentState>(stateKey, ct);
         var state = retained?.Payload ?? new();
-        var terms = JsonSerializer.Deserialize<DirectWorkTerms>(item.Description, SerializerOptions);
-        if (terms is not { Kind: DirectWorkMarker, Request.Length: > 0 }) return PersonalTodoResult.Blocked("The retained development request is invalid.");
+        var terms = JsonSerializer.Deserialize<DirectWorkTerms>(item.Description, _serializerOptions);
+        if (terms is not { Kind: DevelopmentStateStore.DirectWorkMarker, Request.Length: > 0 }) return PersonalTodoResult.Blocked("The retained development request is invalid.");
         try
         {
             if (state.Result is not null) return await CompletedAsync(state.Result);
@@ -92,9 +102,9 @@ public sealed partial class SoftwareDeveloperAgent
                     state = state with { BundleDigest = null, Offset = 0 };
                 await SaveAsync();
             }
-            var root = ValidateDevelopmentWorkspace(workspace.Path, needsFiles);
+            var root = DevelopmentWorkspaceService.ValidateDevelopmentWorkspace(workspace.Path, needsFiles);
             var bundlePath = Path.Combine(root, ".csweet", "deployment.tar.gz");
-            ValidateMetadataPath(root);
+            DevelopmentWorkspaceService.ValidateMetadataPath(root);
             if (state.Outcome is null && state.PlanCompletion is null)
             {
                 if (File.Exists(bundlePath)) File.Delete(bundlePath);
@@ -103,19 +113,19 @@ public sealed partial class SoftwareDeveloperAgent
                 if (File.Exists(outcomePath)) File.Delete(outcomePath);
                 SoftwareDevelopmentOutcome outcome;
                 await ProgressAsync("Writing application code, Docker configuration, and tests.");
-                using var client = await DevelopmentChatClientAsync(context, ct);
+                using var client = await _chatClients.CreateAsync(context, ct);
                 await using var shell = SoftwareDeveloperHarness.CreateShell(root);
                 var options = SoftwareDeveloperHarness.CreateOptions(context.Identity?.DisplayName ?? "Daniel Kim", root, shell,
-                    Settings.GetString("customInstructions"),
-                    Settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
-                    Settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
+                    _settings.GetString("customInstructions"),
+                    _settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
+                    _settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
                 var harness = client.AsHarnessAgent(options);
                 var session = await harness.CreateSessionAsync(ct);
                 try
                 {
                     await SoftwareDeveloperHarness.RunImplementationAsync(harness, session, $$"""
 Implement this personal software-development ticket in the current repository snapshot:
-{{TaskScope(planTask, terms.Request)}}
+{{DevelopmentPlanningService.TaskScope(planTask, terms.Request)}}
 
 Previous compute build/test failure to investigate and repair (if any):
 {{state.LastFailure ?? "None"}}
@@ -145,15 +155,15 @@ induced child-process failure as a failed validation when the enclosing test pas
 Include README instructions and test coverage for the requested behavior. The platform handles deployment.
 """, root, ct, token => context.Platform.Git.UploadAsync(workspace, 1, token));
 
-                    ValidateMetadataPath(root);
-                    outcome = await ReadOutcomeAsync(root, ct);
+                    DevelopmentWorkspaceService.ValidateMetadataPath(root);
+                    outcome = await ImplementationOutcomeReader.ReadAsync(root, ct);
                 }
                 catch (Exception error) when ((error is InvalidOperationException or JsonException) && planTask is not null)
                 {
                     return await RetainAndRepairPlanTaskAsync(error.Message, error is ImplementationOutcomeException);
                 }
                 if (outcome.Validations.Count == 0 || outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
-                    return await RetainAndRepairPlanTaskAsync(FailedValidationSummary(outcome));
+                    return await RetainAndRepairPlanTaskAsync(DevelopmentDiagnostics.FailedValidationSummary(outcome));
                 if (planTask is not null && planTask.PlanExecution != "Deployment")
                 {
                     // Bind accepted evidence to this task and uploaded source before any publication.
@@ -180,10 +190,10 @@ Include README instructions and test coverage for the requested behavior. The pl
                     state = state with
                     {
                         PlanRepairAttempt = state.PlanRepairAttempt + 1,
-                        PlanFailure = SanitizeBlocker(failure)
+                        PlanFailure = DevelopmentDiagnostics.SanitizeBlocker(failure)
                     };
                     await SaveAsync();
-                    var maximumRepairs = Settings.GetInt32("maximumPlanRepairs", 2);
+                    var maximumRepairs = _settings.GetInt32("maximumPlanRepairs", 2);
                     if (state.PlanRepairAttempt > maximumRepairs)
                     {
                         if (invalidReport)
@@ -223,7 +233,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 if (review.Status == "ChangesRequested")
                 {
                     var attempt = state.ReviewRepairAttempt + 1;
-                    if (attempt > Settings.GetInt32("maximumPlanRepairs", 2))
+                    if (attempt > _settings.GetInt32("maximumPlanRepairs", 2))
                         throw new PlanValidationException("Review still requires changes after the repair attempts: " + review.Failure);
                     var refreshed = await context.Platform.Git.RefreshAsync(new(workspace.WorkspaceId, 1, $"review-refresh:{review.Id:N}"), ct);
                     state = state with { PlanCompletion = null, PlanFailure = review.Failure ?? "Review requested changes.", ReviewRepairAttempt = attempt,
@@ -260,14 +270,14 @@ Include README instructions and test coverage for the requested behavior. The pl
             }
             if (state.BundleDigest is null)
             {
-                var digest = await BuildDeploymentBundleAsync(root, bundlePath, ct);
+                var digest = await DevelopmentWorkspaceService.BuildDeploymentBundleAsync(root, bundlePath, ct);
                 state = state with { BundleDigest = digest, BundleBytes = checked((int)new FileInfo(bundlePath).Length) };
                 await SaveAsync();
             }
             try
             {
                 currentStep = "Preparing the assigned Linux test instance";
-                var assignedCompute = await EnsureAssignedComputeAsync(context, ct, projectId: item.WorkContext?.WorkstreamId);
+                var assignedCompute = await new AssignedComputeService(_settings).EnsureAsync(context, ct, projectId: item.WorkContext?.WorkstreamId);
                 if (!assignedCompute.Ready || assignedCompute.Environment is null)
                     return Wait("Waiting for the assigned Linux development workspace. Source code and tests are saved.");
                 if (state.EnvironmentId != assignedCompute.Environment.Id)
@@ -300,7 +310,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                         }
                         var computeKey = state.ReplacementAttempt == 0 ? prefix : prefix + ":replacement:" + state.ReplacementAttempt;
                         var created = await context.Platform.Compute.ProvisionAsync(new(state.WorkstreamId!.Value, computeKey, computeKey + ":compute",
-                            new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), Settings.GetInt32("computeLifetimeSeconds", 0))), ct);
+                            new("linux", "x64", state.TemplateId!, new(2, 2048, 20480), _settings.GetInt32("computeLifetimeSeconds", 0))), ct);
                         state = state with { EnvironmentId = created.Id };
                     }
                     await SaveAsync();
@@ -314,10 +324,10 @@ Include README instructions and test coverage for the requested behavior. The pl
             {
                 // Replacement is a fresh, grant-checked compute request. Never copy network grants,
                 // and never replay an unresolved command against a different environment.
-                var maximumReplacements = Settings.GetInt32("maximumComputeReplacements", 3);
+                var maximumReplacements = _settings.GetInt32("maximumComputeReplacements", 3);
                 var recoverLifetimeTransition = maximumReplacements > 0 &&
                     state.ReplacementAttempt >= maximumReplacements && !state.UntilReleaseRecoveryUsed &&
-                    Settings.GetInt32("computeLifetimeSeconds", 0) == 0 &&
+                    _settings.GetInt32("computeLifetimeSeconds", 0) == 0 &&
                     environment.LeaseExpiresAt != DateTimeOffset.MaxValue && environment.LeaseExpiresAt <= DateTimeOffset.UtcNow;
                 if (state.ReplacementAttempt >= maximumReplacements && !recoverLifetimeTransition)
                     throw new InvalidOperationException("The configured compute replacement limit was reached. Source and test results are saved; increase Maximum compute replacements after resolving the provider failure.");
@@ -348,13 +358,13 @@ Include README instructions and test coverage for the requested behavior. The pl
                 if (operation.Status != "Completed") return Wait("Waiting for compute: " + pending.Stage);
                 if (pending.Stage == "Deploy" && operation.Result is { ErrorCode: null, Command: { ExitCode: not null and not 0, TimedOut: false, ErrorCode: null } failed })
                 {
-                    var diagnostic = DeploymentFailureExcerpt(failed.StandardOutputText, failed.StandardErrorText, Settings.GetInt32("deploymentDiagnosticCharacters", 6000));
+                    var diagnostic = DeploymentFailureExcerpt(failed.StandardOutputText, failed.StandardErrorText, _settings.GetInt32("deploymentDiagnosticCharacters", 6000));
                     // Count repair attempts per reproducible failure signature. A repair for one
                     // failing test must not consume the budget for a newly revealed test failure.
                     var sameFailure = state.LastFailure is not null &&
                         DeploymentFailureFingerprint(state.LastFailure) == DeploymentFailureFingerprint(diagnostic);
                     var repairs = sameFailure ? state.RepairAttempt : 0;
-                    if (repairs >= Settings.GetInt32("maximumDeploymentRepairs", 2))
+                    if (repairs >= _settings.GetInt32("maximumDeploymentRepairs", 2))
                         throw new InvalidOperationException("The configured deployment repair limit was reached for the same build or health-check failure. Source and test results are saved; increase Maximum deployment repairs after resolving it.");
                     state = state with { LastFailure = diagnostic,
                         RepairAttempt = repairs + 1, Pending = null, Step = state.Step + 1, Stage = "Code", Outcome = null,
@@ -388,8 +398,8 @@ Include README instructions and test coverage for the requested behavior. The pl
                         !Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != "http" || uri.Host != "127.0.0.1")
                         throw new InvalidOperationException("The provider did not return a current verified local link.");
                     var sourceUrl = $"/organizations/{context.BusinessId}/source-control?repository={sourcePublication.RepositoryId:D}&reference={Uri.EscapeDataString("refs/heads/" + sourcePublication.BranchName)}";
-                    state = state with { Result = ReviewDeliveryMessage(state.PlanRequest?.EpicTitle ?? item.Title,
-                        url, expiry, sourceUrl, PersonalBoardUrl(context.BusinessId, item)) };
+                    state = state with { Result = DevelopmentDelivery.ReviewDeliveryMessage(state.PlanRequest?.EpicTitle ?? item.Title,
+                        url, expiry, sourceUrl, DevelopmentDelivery.PersonalBoardUrl(context.BusinessId, item)) };
                     await SaveAsync();
                     return await CompletedAsync(state.Result);
                 }
@@ -420,7 +430,7 @@ cd {guestRoot}
 printf '%s  source.tar.gz\n' '{state.BundleDigest}' | sha256sum -c -
 mkdir -p source-{state.RepairAttempt}
 tar -xzf source.tar.gz -C source-{state.RepairAttempt}
-{NodeDeploymentValidationScript(state.RepairAttempt, Settings.GetInt32("deploymentDiagnosticCharacters", 6000))}
+{DevelopmentDelivery.NodeDeploymentValidationScript(state.RepairAttempt, _settings.GetInt32("deploymentDiagnosticCharacters", 6000))}
 # Keep the complete diagnostic in the VM; return the failure tail within the broker output budget.
 set +e
 docker build --network=none --pull=false -t {appName}:test source-{state.RepairAttempt} > build-{state.RepairAttempt}.log 2>&1
@@ -428,7 +438,7 @@ build_exit=$?
 set -e
 if [ "$build_exit" -ne 0 ]; then
   printf 'Docker build failed (exit %s). Full log: %s/build-{state.RepairAttempt}.log\n' "$build_exit" "$PWD" >&2
-  tail -c {Math.Clamp(Settings.GetInt32("deploymentDiagnosticCharacters", 6000), 1, 7000)} build-{state.RepairAttempt}.log >&2
+  tail -c {Math.Clamp(_settings.GetInt32("deploymentDiagnosticCharacters", 6000), 1, 7000)} build-{state.RepairAttempt}.log >&2
   exit "$build_exit"
 fi
 echo 'Docker build passed.'
@@ -470,8 +480,8 @@ PY
         }
         catch (Exception error) when (error is PlatformCapabilityException or InvalidOperationException or IOException or JsonException)
         {
-            var reason = DevelopmentBlockerMessage(error, state.LastFailure, currentStep);
-            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, DevelopmentBlockerChatMessage(error, item.Title, PersonalBoardUrl(context.BusinessId, item)), prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
+            var reason = DevelopmentDiagnostics.DevelopmentBlockerMessage(error, state.LastFailure, currentStep);
+            if (item.SourceConversationId is { } chat) await context.Platform.Communication.SendMessageAsync(chat, DevelopmentDelivery.DevelopmentBlockerChatMessage(error, item.Title, DevelopmentDelivery.PersonalBoardUrl(context.BusinessId, item)), prefix + ":blocked:" + Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(reason))), ct);
             return PersonalTodoResult.Blocked(reason);
         }
 
@@ -506,7 +516,7 @@ PY
             }
         }
 
-        async Task SaveAsync() => retained = await SaveDevelopmentStateAsync(stateKey, state, retained, item.Id, context, ct);
+        async Task SaveAsync() => retained = await DevelopmentStateStore.SaveAsync(stateKey, state, retained, item.Id, context, ct);
         Task ProgressAsync(string message)
         {
             currentStep = message;
@@ -524,7 +534,7 @@ PY
                     deployedSource.PublicationId, summary.Length <= 4096 ? summary : summary[..4096], $"review:{deployedSource.PublicationId:N}"), ct);
                 if (review.Status == "ChangesRequested")
                 {
-                    if (state.ReviewRepairAttempt >= Settings.GetInt32("maximumPlanRepairs", 2))
+                    if (state.ReviewRepairAttempt >= _settings.GetInt32("maximumPlanRepairs", 2))
                         throw new PlanValidationException("Deployment review still requires changes: " + review.Failure);
                     state = state with { ReviewRepairAttempt = state.ReviewRepairAttempt + 1, Result = null, Outcome = null, Publication = null, BundleDigest = null, Offset = 0,
                         PlanFailure = review.Failure, Stage = "Code", Step = 0, LastFailure = review.Failure };
@@ -548,42 +558,4 @@ PY
         }
     }
 
-    private static string ValidateDevelopmentWorkspace(string path, bool requireFiles)
-    {
-        var full = Path.GetFullPath(path);
-        var allowed = full.StartsWith(Path.GetFullPath(PlatformGitWorkspaceClient.LocalWorkspaceRoot) + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
-            !requireFiles && full.StartsWith(Path.GetFullPath("/workspace") + Path.DirectorySeparatorChar, StringComparison.Ordinal);
-        if (!allowed || requireFiles && !Directory.Exists(full) ||
-            Directory.Exists(full) && (File.GetAttributes(full) & FileAttributes.ReparsePoint) != 0) throw new InvalidOperationException("Invalid assignment workspace.");
-        return full;
-    }
-
-    private static async Task<string> BuildDeploymentBundleAsync(string root, string target, CancellationToken ct)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(target)!);
-        await using (var file = File.Create(target))
-        await using (var gzip = new GZipStream(file, CompressionLevel.Fastest))
-        await using (var tar = new TarWriter(gzip, leaveOpen: true))
-        {
-            long total = 0;
-            foreach (var path in Directory.EnumerateFiles(root, "*", new EnumerationOptions { RecurseSubdirectories = true,
-                         AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = false }).Order(StringComparer.Ordinal))
-            {
-                var relative = Path.GetRelativePath(root, path).Replace('\\', '/');
-                if (relative.StartsWith(".csweet/", StringComparison.Ordinal) || relative.StartsWith(".git/", StringComparison.Ordinal)) continue;
-                total += new FileInfo(path).Length;
-                if (total > 16 * 1024 * 1024) throw new InvalidOperationException("The source deployment bundle exceeds the current 16 MiB limit.");
-                await tar.WriteEntryAsync(path, relative, ct);
-            }
-        }
-        await using var input = File.OpenRead(target);
-        return Convert.ToHexStringLower(await SHA256.HashDataAsync(input, ct));
-    }
-
-    private static void ValidateMetadataPath(string root)
-    {
-        foreach (var path in new[] { Path.Combine(root, ".csweet"), Path.Combine(root, ".csweet", "outcome.json"), Path.Combine(root, ".csweet", "deployment.tar.gz") })
-            if ((File.Exists(path) || Directory.Exists(path)) && (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-                throw new InvalidOperationException("The workspace metadata path redirects outside the assignment.");
-    }
 }

@@ -21,7 +21,7 @@ public sealed class ImplementationOutcomeTests
         {
             var path = Path.Combine(root, ".csweet", "outcome.json");
             await File.WriteAllTextAsync(path, VerifiedUnchanged, new UTF8Encoding(bom));
-            var outcome = await SoftwareDeveloperAgent.ReadOutcomeAsync(root, default);
+            var outcome = await ImplementationOutcomeReader.ReadAsync(root, default);
             Assert.Empty(outcome.ChangedFiles);
             Assert.True(Assert.Single(outcome.Validations).Succeeded);
             Assert.Contains("not been run", Assert.Single(outcome.RemainingRisks!));
@@ -46,8 +46,8 @@ public sealed class ImplementationOutcomeTests
         try
         {
             await File.WriteAllTextAsync(Path.Combine(root, ".csweet", "outcome.json"), json);
-            var error = await Assert.ThrowsAsync<SoftwareDeveloperAgent.ImplementationOutcomeException>(
-                () => SoftwareDeveloperAgent.ReadOutcomeAsync(root, default));
+            var error = await Assert.ThrowsAsync<ImplementationOutcomeException>(
+                () => ImplementationOutcomeReader.ReadAsync(root, default));
             Assert.Contains(field, error.Message);
             Assert.StartsWith("The completion report", error.Message);
         }

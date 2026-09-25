@@ -4,10 +4,10 @@ using CSweet.Agent.SDK;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
-public sealed partial class SoftwareDeveloperAgent
-{
-    private sealed class PlanValidationException(string message) : InvalidOperationException(message);
+internal sealed class PlanValidationException(string message) : InvalidOperationException(message);
 
+internal static class DevelopmentDiagnostics
+{
     internal static string DevelopmentBlockerMessage(string error, string? retainedDiagnostic) =>
         DevelopmentBlockerMessage(new InvalidOperationException(error), retainedDiagnostic, "Development");
 
@@ -124,7 +124,7 @@ Development is blocked: {headline}
 
     // Diagnostics are untrusted output. Keep useful relative file names, commands, and error
     // codes, but omit credentials, endpoint URLs, absolute host paths, and stack traces.
-    private static string BlockerExcerpt(string value, int limit)
+    internal static string BlockerExcerpt(string value, int limit)
     {
         value = Regex.Replace(value, @"(?im)^\s*at\s+.*$", "");
         value = Regex.Replace(value, @"(?i)\bBearer\s+\S+", "Bearer [redacted]");
@@ -151,4 +151,21 @@ Development is blocked: {headline}
         }
         return null;
     }
+    internal static string FailedValidationSummary(SoftwareDevelopmentOutcome outcome)
+    {
+        var failures = outcome.Validations
+            .Where(x => !x.Succeeded || x.ExitCode != 0)
+            .Take(20)
+            .Select(x =>
+                $"- `{x.Command}` exited {x.ExitCode}: {SanitizeBlocker(x.DiagnosticExcerpt ?? "No diagnostic excerpt.")}");
+        return $"Implementation remains In Progress because validation failed:{Environment.NewLine}{string.Join(Environment.NewLine, failures)}";
+    }
+
+    internal static string SanitizeBlocker(string value)
+    {
+        value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        if (value.Length > 1200) value = value[..1200];
+        return value;
+    }
+
 }

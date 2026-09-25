@@ -23,7 +23,7 @@ internal static class OnboardingService
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
-        _ = message.Data.Deserialize<AgentOnboardedEvent>(SoftwareDeveloperAgent.SerializerOptions)
+        _ = message.Data.Deserialize<AgentOnboardedEvent>(new JsonSerializerOptions(JsonSerializerDefaults.Web))
             ?? throw new JsonException("Onboarding event is missing.");
         if (!TryResolveManager(context, out var managerId))
             throw new InvalidOperationException(

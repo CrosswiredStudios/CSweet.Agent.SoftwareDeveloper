@@ -198,7 +198,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         {
             if (phase != 1) return GetStreamingResponseAsync(messages, options, cancellationToken).ToChatResponseAsync(cancellationToken);
             Assert.Contains("before any coding", string.Join(" ", messages.Select(x => x.Text)));
-            var draft = new SoftwareDeveloperAgent.DevelopmentPlanDraft("Tetris Clone MVP",
+            var draft = new DevelopmentPlanningService.DevelopmentPlanDraft("Tetris Clone MVP",
             [
                 new("rules", "Rules", "Game rules", ["Rules pass"],
                     [new("grid", "Grid", "Implement grid", ["Grid works"]), new("controls", "Controls", "Implement controls", ["Controls work"])]),
@@ -209,7 +209,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             object response = turn == 0
                 ? new { draft.EpicTitle, Stories = draft.Stories.Select(x => new { x.Key, x.Title, x.Description, x.AcceptanceCriteria }) }
                 : new { StoryKey = draft.Stories[turn - 1].Key, draft.Stories[turn - 1].Tasks };
-            Assert.InRange(options!.MaxOutputTokens!.Value, 1, SoftwareDeveloperAgent.PlanningOutputTokenLimit);
+            Assert.InRange(options!.MaxOutputTokens!.Value, 1, DevelopmentPlanningService.PlanningOutputTokenLimit);
             return Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant, JsonSerializer.Serialize(response))));
         }
 

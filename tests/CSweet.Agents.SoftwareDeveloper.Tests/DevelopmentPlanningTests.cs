@@ -6,7 +6,7 @@ public sealed class DevelopmentPlanningTests
 {
     [Fact]
     public void AcceptsTestablePhasesWithSmallTasksAndFinalValidationThenDeployment() =>
-        SoftwareDeveloperAgent.ValidateDraft(Plan());
+        DevelopmentPlanningService.ValidateDraft(Plan());
 
     [Theory]
     [InlineData("duplicate")]
@@ -25,10 +25,10 @@ public sealed class DevelopmentPlanningTests
         if (issue == "early-deployment") Array.Reverse(tasks);
         stories[1] = stories[1] with { Tasks = tasks };
         plan = plan with { Stories = issue == "single-story" ? stories.Take(1).ToArray() : stories };
-        Assert.Throws<InvalidOperationException>(() => SoftwareDeveloperAgent.ValidateDraft(plan));
+        Assert.Throws<InvalidOperationException>(() => DevelopmentPlanningService.ValidateDraft(plan));
     }
 
-    private static SoftwareDeveloperAgent.DevelopmentPlanDraft Plan() => new("Tetris Clone MVP",
+    private static DevelopmentPlanningService.DevelopmentPlanDraft Plan() => new("Tetris Clone MVP",
     [
         new("rules", "Playable rules", "Game rules", ["Pieces rotate and clear lines"],
             [new("grid", "Grid", "Implement the grid", ["10x20 grid"]),

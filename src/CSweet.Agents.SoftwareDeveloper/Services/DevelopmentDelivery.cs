@@ -3,16 +3,16 @@ using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
-public sealed partial class SoftwareDeveloperAgent
+internal static class DevelopmentDelivery
 {
-    private static string PersonalBoardUrl(string businessId, PersonalTodoItem item) =>
+    internal static string PersonalBoardUrl(string businessId, PersonalTodoItem item) =>
         $"/organizations/{businessId}/employees/{item.OwnerOrganizationUserId:D}?tab=personal-board";
 
     internal static string ReviewDeliveryMessage(string title, string url, DateTimeOffset expiry,
         string sourceUrl, string boardUrl) => $"""
 Your review build is running: **[{url}]({url})**
 
-I've built and started “{BlockerExcerpt(title, 160)}” and confirmed that its web page responds. Please try it and let me know what you'd like changed.
+I've built and started “{DevelopmentDiagnostics.BlockerExcerpt(title, 160)}” and confirmed that its web page responds. Please try it and let me know what you'd like changed.
 
 {(expiry == DateTimeOffset.MaxValue
     ? "Open this link on the computer hosting the test build. It stays available until the instance is stopped or access is removed."
@@ -28,11 +28,11 @@ I've built and started “{BlockerExcerpt(title, 160)}” and confirmed that its
             : error is PlatformCapabilityException { Code: PlatformCapabilityErrorCode.Denied }
                 ? "I don't have permission for a step this task needs. Please ask your administrator to review the permission shown on the blocked ticket, then move it to To Do."
                 : error is PlanValidationException
-                    ? $"The checks still failed after my repair attempts: {BlockerExcerpt(error.Message, 240)}\n\nPlease review the failing check on the ticket. Once the cause is addressed, move it to To Do so I can try again."
+                    ? $"The checks still failed after my repair attempts: {DevelopmentDiagnostics.BlockerExcerpt(error.Message, 240)}\n\nPlease review the failing check on the ticket. Once the cause is addressed, move it to To Do so I can try again."
                     : error is ImplementationOutcomeException
                         ? "I couldn't verify the completion report after my repair attempts. The ticket explains which evidence is missing. Please review it before moving the ticket to To Do for another attempt."
-                        : $"{BlockerExcerpt(error.Message, 240)}\n\nI've put the diagnostic and recovery steps on the ticket. Please review those before retrying; I haven't confirmed a review build for this attempt.";
-        return $"I'm blocked on “{BlockerExcerpt(title, 160)}”. {cause}\n\n[See the blocker on my board]({boardUrl})";
+                        : $"{DevelopmentDiagnostics.BlockerExcerpt(error.Message, 240)}\n\nI've put the diagnostic and recovery steps on the ticket. Please review those before retrying; I haven't confirmed a review build for this attempt.";
+        return $"I'm blocked on “{DevelopmentDiagnostics.BlockerExcerpt(title, 160)}”. {cause}\n\n[See the blocker on my board]({boardUrl})";
     }
 
     // Run the actual project tests in the cached Node runtime, even when the author's

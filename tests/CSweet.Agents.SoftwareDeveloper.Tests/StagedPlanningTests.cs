@@ -95,7 +95,7 @@ public sealed class StagedPlanningTests
         var factory = new ScriptedFactory((call, _) => call == 1 ? Outline() : Tasks(call - 2));
         await Assert.ThrowsAsync<InvalidOperationException>(() => f.EvaluateAsync(factory));
         Assert.Equal(3, factory.Calls);
-        SoftwareDeveloperAgent.ValidateDraft(f.Draft());
+        DevelopmentPlanningService.ValidateDraft(f.Draft());
         Assert.Empty(f.Plans);
         f.FailRequestWrite = false;
         var noModel = new ScriptedFactory((_, _) => throw new InvalidOperationException("Do not replan."));
@@ -189,7 +189,7 @@ public sealed class StagedPlanningTests
                     (_, _) => Task.FromResult(environment))
                 .RegisterCapability<CreatePersonalWorkPlanRequest, PersonalWorkPlan>(PersonalWorkPlanCapabilities.Create, (request, _) =>
                 {
-                    SoftwareDeveloperAgent.ValidateDraft(new(request.EpicTitle, request.Stories));
+                    DevelopmentPlanningService.ValidateDraft(new(request.EpicTitle, request.Stories));
                     Plans.Add(request);
                     return Task.FromResult(new PersonalWorkPlan(_item.Id, _item.Revision, []));
                 })
@@ -200,9 +200,9 @@ public sealed class StagedPlanningTests
                 });
         }
 
-        public SoftwareDeveloperAgent.DevelopmentPlanDraft Draft() =>
+        public DevelopmentPlanningService.DevelopmentPlanDraft Draft() =>
             _states[$"development/task/{_item.Id:N}"].Payload.GetProperty("planningDraft")
-                .Deserialize<SoftwareDeveloperAgent.DevelopmentPlanDraft>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+                .Deserialize<DevelopmentPlanningService.DevelopmentPlanDraft>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
 
         public async Task<PersonalWorkPlan> EvaluateAsync(ScriptedFactory factory, CancellationToken ct = default)
         {

@@ -5,7 +5,7 @@ public class DeploymentDiagnosticTests
     public void Failure_tail_survives_a_long_passing_test_preamble()
     {
         var error = "FAIL O-piece must not move at corner";
-        var excerpt = SoftwareDeveloperAgent.DeploymentFailureExcerpt(new string('x', 12000), error, 100);
+        var excerpt = PersonalDevelopmentService.DeploymentFailureExcerpt(new string('x', 12000), error, 100);
         Assert.EndsWith(error, excerpt);
         Assert.Equal(100, excerpt.Length);
     }
@@ -13,7 +13,7 @@ public class DeploymentDiagnosticTests
     [Fact]
     public void Compute_outcome_blocker_is_concise_markdown_with_the_first_failed_test()
     {
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(
             "Compute command failed or its outcome is unknown; it will not be replayed with new terms. Docker build failed (exit 1). Full log: /var/lib/csweet-compute/work/example/build.log\nPASS unrelated check\nFAIL  O-piece can rotate freely even when hugging a corner\n  O must not move at the corner\n+ actual - expected\n",
             null);
 
@@ -28,7 +28,7 @@ public class DeploymentDiagnosticTests
     [Fact]
     public void Repeated_deployment_failure_uses_retained_evidence_without_dumping_the_log()
     {
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(
             "The configured deployment repair limit was reached for the same build or health-check failure.",
             "Docker build failed (exit 1).\nFAIL  O-piece can rotate freely even when hugging a corner\n  O must not move at the corner\nPASS other test");
 
@@ -40,7 +40,7 @@ public class DeploymentDiagnosticTests
     [Fact]
     public void Unknown_failure_preserves_current_error_and_does_not_reuse_stale_build_failure()
     {
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(
             new InvalidOperationException("Ticket update interrupted"),
             "FAIL old unrelated test\nOld failure", "Recording task completion");
         Assert.Contains("Ticket update interrupted", message);
@@ -57,7 +57,7 @@ public class DeploymentDiagnosticTests
         var error = new CSweet.Agent.SDK.PlatformCapabilityException("git.workspace.publish.v1",
             CSweet.Agent.SDK.PlatformCapabilityErrorCode.Denied, "Repository grant is missing",
             failureCode: "grant.missing");
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(error, null, "Publishing checkpoint");
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(error, null, "Publishing checkpoint");
         Assert.Contains("git.workspace.publish.v1", message);
         Assert.Contains("grant.missing", message);
         Assert.Contains("Repository grant is missing", message);
@@ -68,7 +68,7 @@ public class DeploymentDiagnosticTests
     [Fact]
     public void Unknown_compute_outcome_does_not_invent_a_build_or_test_failure()
     {
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(
             "Compute command failed or its outcome is unknown", null);
         Assert.Contains("confirm whether it ran", message);
         Assert.DoesNotContain("Docker build", message);
@@ -78,7 +78,7 @@ public class DeploymentDiagnosticTests
     [Fact]
     public void Diagnostic_is_bounded_and_removes_credentials_paths_and_stack_traces()
     {
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(
             "Request rejected: token=secret123 password=pass456 api_key=key789 Bearer bearer123 https://example.test/?secret=urlsecret /var/lib/private/log C:\\private\\log\n   at Secret.Internal.Method()\n" + new string('x', 5000), null);
         foreach (var secret in new[] { "secret123", "pass456", "key789", "bearer123", "urlsecret", "/var/lib", "C:\\private", "Secret.Internal" })
             Assert.DoesNotContain(secret, message);
@@ -97,7 +97,7 @@ public class DeploymentDiagnosticTests
         var input = wrapped ? System.Text.Json.JsonSerializer.Serialize(new { code = "Conflict", error = detail }) : detail;
         var error = new CSweet.Agent.SDK.PlatformCapabilityException("git.workspace.publish.v2",
             CSweet.Agent.SDK.PlatformCapabilityErrorCode.Unavailable, input, failureCode: "capability.failed");
-        var message = SoftwareDeveloperAgent.DevelopmentBlockerMessage(error, "old unrelated error", "Saving source changes");
+        var message = DevelopmentDiagnostics.DevelopmentBlockerMessage(error, "old unrelated error", "Saving source changes");
         Assert.Contains("**Reported error:** The idempotency key was already used with different content.", message);
         Assert.Contains("workspace.publication\\_content\\_changed", message);
         Assert.Contains("**Diagnostic ID:** " + diagnosticId, message);

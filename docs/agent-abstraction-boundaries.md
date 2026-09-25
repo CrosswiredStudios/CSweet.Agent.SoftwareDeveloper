@@ -168,6 +168,25 @@ same semantics and it reduces code without obscuring role decisions.
 7. Keep machine-checkable policy and rendered guidance in parity through generated prompt snippets
    or snapshot/evaluation checks.
 
+## Current implementation services
+
+`SoftwareDeveloperAgent` remains the SDK callback and configuration adapter. It reads the current
+installation settings when a callback arrives and constructs the relevant service; it does not keep
+a second, process-owned work queue. The services keep role policy in this repository:
+
+| Service | Responsibility |
+|---|---|
+| `DevelopmentIntakeService`, `ProjectIntakeService`, `DevelopmentCoordinationService` | Interpret human and coworker turns, resolve retained project intake, and request governed retries. |
+| `AssignedDevelopmentService`, `DirectImplementationService` | Execute the two implementation capabilities and produce their bounded outcomes. |
+| `PersonalDevelopmentService`, `DevelopmentPlanningService` | Resume retained personal work, checkpoint plans, validate tasks, and coordinate review and test-instance delivery. |
+| `AssignedComputeService`, `ComputeDemoService`, `DevelopmentWorkspaceService` | Check and provision assigned compute, run the limited demo, and validate/package workspace files. |
+| `DevelopmentChatClientProvider`, `ImplementationOutcomeReader`, `DevelopmentDiagnostics`, `DevelopmentDelivery` | Select the approved model, consume completion reports, classify and format blockers, and render delivery text. |
+
+These are internal collaborators, not new platform grants or independent workers. Their effects still
+flow through `AgentRuntimeContext.Platform`. The personal development service reads the existing
+`development/task/{id}` operating state; moving its record type did not change the stored JSON,
+state key, idempotency keys, or callback contract. No interface is added for a service with only one
+implementation; the external model and platform boundaries already use the SDK's typed abstractions.
 ## Current Software Developer gap
 
 The operating guide describes a target onboarding process that checks team context, accessible
