@@ -12,6 +12,8 @@ internal sealed class DevelopmentCoordinationService(ProjectIntakeService projec
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (ProductionEstimation.TryHandle(request) is { } estimateResult) return estimateResult;
         if (request.SourceKind == "ProjectIntake")
         {
             var artifact = request.Transcript.Select(x => x.Artifact).FirstOrDefault(x => x?.Type == "project-manager-assistance.v1");

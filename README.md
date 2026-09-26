@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.11.11
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.11.11`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.12.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -393,3 +393,14 @@ Declares the shared SDK requiresProject policy. Retains requests through typed p
   ·
   <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet on Ko-fi</a>
 </div>
+
+### Producer sprint estimation
+
+The developer accepts the Producer's existing `video-game.production.role-estimate-request.v1`
+board coordination protocol for `game-engineer` and `software-developer` assignments. Replies
+bind the request fingerprint, board, planning revision, digest and exact candidate item IDs.
+Initial estimates use the production specialist kit's documented criterion/dependency sizing
+policy; offered capacity is conditional on no competing allocation and available prerequisites.
+These proposals do not mark work Ready, approve QA, activate a sprint, or change assignments.
+Malformed, cross-board, foreign-role and uncorrelated requests remain blocked. No new grants
+or network access are required.
