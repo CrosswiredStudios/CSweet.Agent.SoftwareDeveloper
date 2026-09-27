@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.3
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.4
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.12.3`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.12.4`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -412,3 +412,7 @@ Assigned sprint tickets use the SDK's confined snapshot workspace, as personal w
 ## Assigned coding runtime (1.12.3)
 
 Assigned engineering stages implement and validate code in the authorized snapshot inside the isolated agent runtime. They do not request a separate deployment VM. Deployment flows still require ready compute; assigned publication still requires actual validation and the configured technical review, independent QA and merge stages.
+
+## Review-driven rework (1.12.4)
+
+Assigned coding consumes completed technical-review and QA rejection results from `WorkExecutionAssignmentV1.PriorOutcomes`, with exact commit evidence and bounded findings. The model must compare each finding with the current source and either fix it or provide evidence for a resolved/disputed finding. Prior findings do not waive acceptance criteria. A new attempt removes only its local previous `.csweet/outcome.json` before model execution and requires fresh validation evidence; source edits remain retained.
