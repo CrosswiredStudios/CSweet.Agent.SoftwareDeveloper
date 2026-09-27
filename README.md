@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.1
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.2
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.12.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.12.2`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -406,3 +406,5 @@ Malformed, cross-board, foreign-role and uncorrelated requests remain blocked. N
 or network access are required.
 
 Orchestrated repository publication selects the exact success transition declared by the host: `code-published` for game workflows that require technical review and QA, or `completed` for legacy software workflows. Unsupported policies block before implementation. Host-supplied `dependency-document.v1` evidence carries only the exact manager-accepted work product of a declared dependency. The developer checks its source, immutable revision, and content hash before including it as untrusted design evidence in the coding prompt; it gains no document browsing or editing permission.
+
+Assigned sprint tickets use the SDK's confined snapshot workspace, as personal work already does. Source is downloaded before the coding harness starts, checkpointed during execution, and uploaded before inspection/publication. A broker path is not assumed to exist inside the isolated runtime.

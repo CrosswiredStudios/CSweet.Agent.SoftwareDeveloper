@@ -418,3 +418,4 @@ FodyWeavers.xsd
 !/releases/
 /releases/*
 !/releases/*.md
+/.artifacts

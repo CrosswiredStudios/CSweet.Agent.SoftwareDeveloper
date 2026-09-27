@@ -102,19 +102,9 @@ internal sealed partial class AssignedDevelopmentService(
         await context.ReportProgressAsync(
             new { stage = "preparing-workspace", itemId = item.Id, assignmentRevision },
             cancellationToken);
-        var workspace = await context.Platform.Git.PrepareAsync(
-            new PrepareGitWorkspaceRequest(
-                item.Id,
-                assignmentRevision,
-                EventKey(operationId, "prepare")),
-            cancellationToken);
-
-        var workspacePath = Path.GetFullPath(workspace.Path);
-        var expectedRoot = Path.GetFullPath("/workspace") + Path.DirectorySeparatorChar;
-        if (!workspacePath.StartsWith(expectedRoot, StringComparison.Ordinal) ||
-            !Directory.Exists(workspacePath))
-            throw new OperationalDevelopmentException(
-                "The platform returned an invalid or unavailable assignment workspace.");
+        var workspace = await PrepareWorkspaceAsync(item.Id, assignmentRevision,
+            EventKey(operationId, "prepare"), context, cancellationToken);
+        var workspacePath = DevelopmentWorkspaceService.ValidateDevelopmentWorkspace(workspace.Path, requireFiles: true);
 
         try
         {
@@ -156,7 +146,7 @@ internal sealed partial class AssignedDevelopmentService(
             BuildAssignmentPrompt(operationId, item, assignmentRevision,
                 guidance.Items.Select(x => x.Body).ToArray(), dependencyPlans),
             workspacePath,
-            cancellationToken);
+            cancellationToken, token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token));
 
         var outcome = await ImplementationOutcomeReader.ReadAsync(workspacePath, cancellationToken);
         if (outcome.Validations.Count == 0 ||
@@ -165,10 +155,7 @@ internal sealed partial class AssignedDevelopmentService(
             throw new InvalidOperationException(DevelopmentDiagnostics.FailedValidationSummary(outcome));
         }
 
-        var inspection = await context.Platform.Git.InspectAsync(
-            new InspectGitWorkspaceRequest(
-                workspace.WorkspaceId, assignmentRevision),
-            cancellationToken);
+        var inspection = await UploadAndInspectAsync(workspace, assignmentRevision, context, cancellationToken);
         if (!inspection.HasChanges)
         {
             throw new InvalidOperationException(
