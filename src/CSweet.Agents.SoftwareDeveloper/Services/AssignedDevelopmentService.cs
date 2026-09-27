@@ -27,6 +27,7 @@ internal sealed class AssignedDevelopmentService(
             return AgentWorkResult.Failure("The orchestration assignment is incomplete.");
         try
         {
+            var successCode = SuccessfulOutcomeCode(assignment.Input);
             var item = await context.Platform.Work.ReadItemAsync(
                 new WorkItemReference(assignment.BoardId, assignment.ItemId), cancellationToken);
             if (item.Development is null)
@@ -43,7 +44,7 @@ internal sealed class AssignedDevelopmentService(
                     "pull-request", "Proposed change", output.PullRequestUrl.ToString()));
             var outcome = new WorkExecutionOutcomeV1(
                 assignment.StageExecutionId, assignment.AttemptId,
-                WorkExecutionDispositions.Completed, "completed", output.Summary,
+                WorkExecutionDispositions.Completed, successCode, output.Summary,
                 JsonSerializer.SerializeToElement(output),
                 evidence, []);
             return AgentWorkResult.Success(outcome);
@@ -62,6 +63,21 @@ internal sealed class AssignedDevelopmentService(
         }
     }
 
+    internal static string SuccessfulOutcomeCode(JsonElement input)
+    {
+        // Legacy hosts did not send a transition vocabulary. New hosts pin it to the stage policy.
+        if (input.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null ||
+            input.ValueKind == JsonValueKind.Object && !input.TryGetProperty("allowedOutcomeCodes", out _))
+            return "completed";
+        if (input.ValueKind != JsonValueKind.Object ||
+            !input.TryGetProperty("allowedOutcomeCodes", out var codes) || codes.ValueKind != JsonValueKind.Array ||
+            codes.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String))
+            throw new OperationalDevelopmentException("The assignment contains invalid allowed outcome codes.");
+        var allowed = codes.EnumerateArray().Select(x => x.GetString()).ToHashSet(StringComparer.Ordinal);
+        if (allowed.Contains("code-published")) return "code-published";
+        if (allowed.Count == 0 || allowed.Contains("completed")) return "completed";
+        throw new OperationalDevelopmentException("The assigned stage has no supported code-publication transition.");
+    }
     private async Task<DevelopmentStageOutput> ExecuteAssignedTicketAsync(
         Guid operationId,
         long assignmentRevision,
