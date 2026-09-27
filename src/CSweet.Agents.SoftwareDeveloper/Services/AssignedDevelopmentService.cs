@@ -106,19 +106,8 @@ internal sealed partial class AssignedDevelopmentService(
             EventKey(operationId, "prepare"), context, cancellationToken);
         var workspacePath = DevelopmentWorkspaceService.ValidateDevelopmentWorkspace(workspace.Path, requireFiles: true);
 
-        try
-        {
-            var projectBoard = await context.Platform.Work.ReadBoardAsync(boardId, cancellationToken);
-            var assignedCompute = await new AssignedComputeService(_settings).EnsureAsync(context, cancellationToken, projectId: projectBoard.Board.WorkstreamId);
-            if (!assignedCompute.Ready)
-                throw new OperationalDevelopmentException("compute-unavailable: the assigned Linux development workspace is not Ready.");
-        }
-        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound ||
-            exception.Code == PlatformCapabilityErrorCode.Denied &&
-            exception.Message.Contains("not registered in this test runtime", StringComparison.Ordinal))
-        {
-            // Compatibility for hosts predating durable assigned-compute state.
-        }
+        // Assigned coding and validation use the confined agent runtime workspace.
+        // Separate compute is needed by deployment, which this capability does not perform.
         var maxContextWindowTokens = _settings.GetInt32(
             "maxContextWindowTokens",
             SoftwareDeveloperHarness.DefaultContextWindowTokens);
