@@ -404,3 +404,5 @@ policy; offered capacity is conditional on no competing allocation and available
 These proposals do not mark work Ready, approve QA, activate a sprint, or change assignments.
 Malformed, cross-board, foreign-role and uncorrelated requests remain blocked. No new grants
 or network access are required.
+
+Orchestrated repository publication selects the exact success transition declared by the host: `code-published` for game workflows that require technical review and QA, or `completed` for legacy software workflows. Unsupported policies block before implementation. Host-supplied `dependency-document.v1` evidence carries only the exact manager-accepted work product of a declared dependency. The developer checks its source, immutable revision, and content hash before including it as untrusted design evidence in the coding prompt; it gains no document browsing or editing permission.

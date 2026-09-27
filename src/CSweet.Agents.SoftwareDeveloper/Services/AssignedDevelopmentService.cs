@@ -230,7 +230,7 @@ internal sealed partial class AssignedDevelopmentService(
             outcome.Validations);
     }
 
-    private static string BuildAssignmentPrompt(
+    internal static string BuildAssignmentPrompt(
         Guid eventId,
         WorkItem item,
         long assignmentRevision,
