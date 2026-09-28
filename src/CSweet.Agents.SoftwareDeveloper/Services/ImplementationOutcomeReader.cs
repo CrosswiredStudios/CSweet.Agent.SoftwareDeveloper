@@ -41,6 +41,13 @@ internal static class ImplementationOutcomeReader
         if (outcome.Validations is null || outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => x is null || string.IsNullOrWhiteSpace(x.Command)))
             throw new ImplementationOutcomeException("The completion report requires validations with the commands actually run and their real results, including for unchanged work.");
+        if (outcome.FindingResolutions is { } resolutions &&
+            (resolutions.Count > 128 || resolutions.Any(x => x is null ||
+                string.IsNullOrWhiteSpace(x.FindingId) || x.FindingId.Length > 32 ||
+                !FindingResolutionKinds.IsKnown(x.Resolution) ||
+                string.IsNullOrWhiteSpace(x.Evidence) || x.Evidence.Length > 4000)))
+            throw new ImplementationOutcomeException(
+                "The completion report findingResolutions entries each require a findingId from the prompt, a resolution of fixed, already-resolved, disputed or needs-decision, and bounded evidence.");
 
         File.Delete(path);
         return outcome;

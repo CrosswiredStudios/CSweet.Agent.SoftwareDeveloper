@@ -34,7 +34,8 @@ internal sealed partial class AssignedDevelopmentService(
                 throw new InvalidOperationException("The development stage requires a software development brief.");
             var output = await ExecuteAssignedTicketAsync(
                 assignment.AttemptId, assignment.AssignmentRevision,
-                assignment.BoardId, item, ReadDependencyPlans(assignment, item), ReadReviewFeedback(assignment), context, cancellationToken);
+                assignment.BoardId, item, ReadDependencyPlans(assignment, item), ReadReviewFeedback(assignment),
+                assignment.PriorOutcomes, assignment.ItemIdentifier ?? item.Title, ManagerDirections(assignment), assignment.StageExecutionId, context, cancellationToken);
             var evidence = new List<WorkExecutionEvidence>
             {
                 new("commit", "Source commit", output.CommitSha)
@@ -50,6 +51,17 @@ internal sealed partial class AssignedDevelopmentService(
             return AgentWorkResult.Success(outcome);
         }
         catch (OperationCanceledException) { throw; }
+        catch (DecisionRequiredException decision)
+        {
+            // Not a technical failure: nothing for the architect to debug. The manager owns the decision.
+            _logger.LogInformation("Orchestrated development stage {StageExecutionId} needs a manager decision.", assignment.StageExecutionId);
+            var summary = DecisionRequired.Bound(decision.Message.Trim());
+            return AgentWorkResult.Success(new WorkExecutionOutcomeV1(
+                assignment.StageExecutionId, assignment.AttemptId,
+                WorkExecutionDispositions.Blocked, "blocked", summary,
+                JsonSerializer.SerializeToElement(new { }), [],
+                [DecisionRequired.Diagnostic, DevelopmentDiagnostics.SanitizeBlocker(summary)]));
+        }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Orchestrated development stage {StageExecutionId} is blocked.", assignment.StageExecutionId);
@@ -85,6 +97,10 @@ internal sealed partial class AssignedDevelopmentService(
         WorkItem item,
         IReadOnlyList<DependencyPlan> dependencyPlans,
         IReadOnlyList<ReviewFeedback> reviewFeedback,
+        IReadOnlyList<WorkExecutionOutcomeV1>? priorOutcomes,
+        string itemIdentifier,
+        IReadOnlyList<string> managerDirections,
+        Guid stageExecutionId,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
@@ -92,6 +108,10 @@ internal sealed partial class AssignedDevelopmentService(
         var guidance = await context.Platform.Work.ReadCommentsAsync(
             new ReadWorkItemCommentsRequest(boardId, item.Id, "ArchitectureSupportCompleted"),
             cancellationToken);
+        var technicalGuidance = guidance.Items.Select(x => x.Body).ToList();
+        if (await RecallTechnicalGuidanceAsync(stageExecutionId, context, cancellationToken) is { } recalled &&
+            !technicalGuidance.Contains(recalled, StringComparer.Ordinal))
+            technicalGuidance.Add(recalled);
         var providerProfileId = _settings.GetGuid("llmProviderId")
             ?? throw new OperationalDevelopmentException(
                 "Configure an approved LLM provider before assigning development work.");
@@ -136,7 +156,7 @@ internal sealed partial class AssignedDevelopmentService(
             harness,
             session,
             BuildAssignmentPrompt(operationId, item, assignmentRevision,
-                guidance.Items.Select(x => x.Body).ToArray(), dependencyPlans, reviewFeedback),
+                technicalGuidance, dependencyPlans, reviewFeedback, managerDirections),
             workspacePath,
             cancellationToken, token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token));
 
@@ -150,8 +170,29 @@ internal sealed partial class AssignedDevelopmentService(
         var inspection = await UploadAndInspectAsync(workspace, assignmentRevision, context, cancellationToken);
         if (!inspection.HasChanges)
         {
-            throw new InvalidOperationException(
-                "Validation passed, but the assignment workspace contains no reviewable changes.");
+            // An unchanged workspace is a legitimate answer to rework, not a crash. Respond the way a
+            // developer would: resubmit the same build with evidence, or ask the manager for a decision.
+            var candidate = PublishedCandidate(priorOutcomes, workspace.BaseCommitSha) ??
+                await RecallPublishedCandidateAsync(boardId, item.Id, assignmentRevision, workspace, context, cancellationToken);
+            switch (DecideNoChangeRework(itemIdentifier, reviewFeedback, outcome, candidate, workspace.BaseCommitSha,
+                CandidateSubmissions(priorOutcomes, workspace.BaseCommitSha), managerDirections.Count > 0))
+            {
+                case NoChangeReworkDecision.Resubmit resubmit:
+                    await context.Platform.Work.CommentAsync(
+                        new CommentOnWorkItemRequest(boardId, item.Id, resubmit.Summary, EventKey(operationId, "resubmit")),
+                        cancellationToken);
+                    await context.Platform.Git.CleanupAsync(
+                        new CleanupGitWorkspaceRequest(workspace.WorkspaceId, assignmentRevision, RetainOnFailure: true),
+                        cancellationToken);
+                    await context.ReportProgressAsync(
+                        new { stage = "resubmitted", itemId = item.Id, commitSha = resubmit.Candidate.CommitSha },
+                        cancellationToken);
+                    return resubmit.Candidate;
+                case NoChangeReworkDecision.Escalate escalate:
+                    throw new DecisionRequiredException(escalate.Summary);
+                default:
+                    throw new InvalidOperationException("Validation passed, but the assignment workspace contains no reviewable changes.");
+            }
         }
 
         var publication = await context.Platform.Git.PublishAsync(
@@ -197,7 +238,7 @@ internal sealed partial class AssignedDevelopmentService(
                 pullRequestUrl = publication.PullRequestUrl
             },
             cancellationToken);
-        return new DevelopmentStageOutput(
+        var published = new DevelopmentStageOutput(
             publication.RepositoryId,
             publication.Provider,
             publication.DeliveryKind,
@@ -207,6 +248,8 @@ internal sealed partial class AssignedDevelopmentService(
             outcome.Summary,
             outcome.ChangedFiles,
             outcome.Validations);
+        await RememberPublishedCandidateAsync(item.Id, assignmentRevision, published, operationId, context, cancellationToken);
+        return published;
     }
 
     internal static string BuildAssignmentPrompt(
@@ -214,7 +257,8 @@ internal sealed partial class AssignedDevelopmentService(
         WorkItem item,
         long assignmentRevision,
         IReadOnlyList<string>? architectureGuidance = null, IReadOnlyList<DependencyPlan>? dependencyPlans = null,
-        IReadOnlyList<ReviewFeedback>? reviewFeedback = null)
+        IReadOnlyList<ReviewFeedback>? reviewFeedback = null,
+        IReadOnlyList<string>? managerDirections = null)
     {
         var payload = JsonSerializer.Serialize(
             new
@@ -230,7 +274,17 @@ internal sealed partial class AssignedDevelopmentService(
                 qaFindings = item.Development.ReworkFindings ?? [],
                 architectureGuidance = architectureGuidance ?? [],
                 dependencyPlans = dependencyPlans ?? [],
-                reviewFeedback = reviewFeedback ?? []
+                managerDirections = managerDirections ?? [],
+                reviewFeedback = (reviewFeedback ?? []).Select((review, reviewIndex) => new
+                {
+                    review.StageExecutionId,
+                    review.AttemptId,
+                    review.OutcomeCode,
+                    review.SourceCommitSha,
+                    review.Summary,
+                    findings = review.Findings.Select((text, findingIndex) =>
+                        new { id = $"R{reviewIndex + 1}.{findingIndex + 1}", text }).ToArray()
+                }).ToArray()
             },
             new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true });
         return $$"""
@@ -249,6 +303,18 @@ Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
 {"summary":"...","changedFiles":["path"],"validations":[{"command":"...","succeeded":true,"exitCode":0,"diagnosticExcerpt":null}],"remainingRisks":[]}
 If retained files already satisfy the ticket, use "changedFiles":[], explain what was verified in summary,
 and record fresh relevant validation. Do not invent edits merely to report changed files.
+
+When reviewFeedback is present, also add "findingResolutions" with one entry per finding ID (for example R1.2):
+{"findingId":"R1.2","resolution":"fixed|already-resolved|disputed|needs-decision","evidence":"..."}
+- fixed: you changed code in this run to correct it.
+- already-resolved: the current workspace already satisfies it; cite the file, line or command output.
+- disputed: the finding is incorrect; cite the requirement and evidence that shows why.
+- needs-decision: no code change can satisfy it, for example a measurement that needs a device, browser,
+  network or service unavailable to every role here, or a requirement conflict. Say exactly what is missing.
+Never mark missing evidence as resolved and never fabricate measurements. If no code change is needed, the
+unchanged candidate is resubmitted with your evidence; any needs-decision finding goes to the manager instead.
+managerDirections are the manager's reasons for retrying this stage (for example a tie-break on a disputed
+finding). Follow them within the accepted requirements; they never waive acceptance criteria or independent QA.
 Every validation entry must reflect a command you actually ran and its real exit code. Exclude
 secrets, environment dumps, authorization-bearing URLs, and unbounded command output.
 
@@ -293,7 +359,7 @@ Changed files:
 
 Validation:
 {string.Join(Environment.NewLine, outcome.Validations.Select(x => $"- `{x.Command}` passed (exit {x.ExitCode})"))}
-
+{FindingResolutionLines(outcome)}
 Branch: `{publication.BranchName}`
 Commit: `{publication.CommitSha}`
 Pull request: {publication.PullRequestUrl}
@@ -308,12 +374,13 @@ Pull request: {publication.PullRequestUrl}
         try
         {
             var team = await context.Platform.ReadCompleteTeamRosterAsync(token: cancellationToken);
+            // Ask the team's technical lead: the Architect on software teams, the Technical Director on game teams.
             var architect = team?.Members.Where(x =>
                     x.AgentInstallationId.HasValue && x.IsAvailable &&
                     !string.Equals(x.RuntimeEligibility, "Ineligible", StringComparison.OrdinalIgnoreCase) &&
-                    ((x.CompanyRole?.Contains("Architect", StringComparison.OrdinalIgnoreCase) ?? false) ||
-                     (x.TeamRole?.Contains("Architect", StringComparison.OrdinalIgnoreCase) ?? false)))
-                .OrderBy(x => x.EmployeeId, StringComparer.Ordinal).FirstOrDefault();
+                    TechnicalLeadRank(x.CompanyRole, x.TeamRole) > 0)
+                .OrderByDescending(x => TechnicalLeadRank(x.CompanyRole, x.TeamRole))
+                .ThenBy(x => x.EmployeeId, StringComparer.Ordinal).FirstOrDefault();
             if (architect is null || !Guid.TryParse(architect.EmployeeId, out var architectUserId))
                 return;
             var diagnostic = DevelopmentDiagnostics.SanitizeBlocker(exception.Message);
@@ -347,6 +414,16 @@ Pull request: {publication.PullRequestUrl}
             // Missing or stale support eligibility is handled by normal operational escalation.
         }
     }
+
+    /// <summary>2 for an Architect, 1 for a Technical Director, 0 for anyone else.</summary>
+    internal static int TechnicalLeadRank(params string?[] roles) =>
+        roles.Any(x => x?.Contains("Architect", StringComparison.OrdinalIgnoreCase) == true) ? 2 :
+        roles.Any(x => x?.Contains("Technical Director", StringComparison.OrdinalIgnoreCase) == true) ? 1 : 0;
+
+    /// <summary>The manager's retry directions for this exact stage, supplied by the platform as assignment evidence.</summary>
+    internal static IReadOnlyList<string> ManagerDirections(WorkExecutionAssignmentV1 assignment) =>
+        (assignment.Evidence ?? []).Where(x => x.Kind == "manager-direction" && !string.IsNullOrWhiteSpace(x.Value))
+            .TakeLast(3).Select(x => x.Value.Length <= 1000 ? x.Value : x.Value[..1000]).ToArray();
 
     private static string EventKey(Guid eventId, string operation) =>
         $"{eventId:N}:{operation}";

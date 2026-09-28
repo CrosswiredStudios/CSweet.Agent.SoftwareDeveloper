@@ -40,6 +40,9 @@ internal sealed class DevelopmentCoordinationService(ProjectIntakeService projec
         if (guidance is null || guidance.RequiresArchitectureApproval)
             return AgentCoordinationTurnResult.Blocked(
                 guidance?.ApprovalReason ?? "The guidance requires Product Manager architecture approval.");
+        var summary = GuidanceSummary(guidance);
+        // Hand the guidance to the retried attempt directly; the completion comment is written only after this turn.
+        await RememberGuidanceAsync(source.StageExecutionId, summary, context, cancellationToken);
         try
         {
             await context.Platform.Work.RetryBlockedStageAsync(
@@ -48,8 +51,9 @@ internal sealed class DevelopmentCoordinationService(ProjectIntakeService projec
                     $"developer-guided-retry:{source.StageExecutionId:N}:{source.AssignmentRevision}",
                     "Architect guidance was linked and consumed.")
                 { ExpectedAssignmentRevision = source.AssignmentRevision }, cancellationToken);
-            return AgentCoordinationTurnResult.Completed(
-                "The linked Architect guidance was consumed and the exact blocked stage was submitted for governed retry.");
+            // The completion summary becomes the ArchitectureSupportCompleted ticket comment that the retried
+            // coding attempt reads, so it must carry the guidance itself, not just a receipt.
+            return AgentCoordinationTurnResult.Completed(summary);
         }
         catch (PlatformCapabilityException exception)
         {
@@ -58,4 +62,40 @@ internal sealed class DevelopmentCoordinationService(ProjectIntakeService projec
         }
     }
 
+
+    internal static string GuidanceStateKey(Guid stageExecutionId) => $"development/guidance/{stageExecutionId:N}";
+
+    private static async Task RememberGuidanceAsync(Guid stageExecutionId, string summary,
+        AgentRuntimeContext context, CancellationToken cancellationToken)
+    {
+        var key = GuidanceStateKey(stageExecutionId);
+        try
+        {
+            var previous = await context.Platform.ReadOperatingStateAsync<TechnicalGuidanceState>(key, cancellationToken);
+            await context.Platform.WriteOperatingStateAsync(new WriteAgentOperatingStateRequest<TechnicalGuidanceState>(
+                key, "software-development.technical-guidance.v1", 1, "Active", new Dictionary<string, string>(), [],
+                key, [], Guid.NewGuid(), new TechnicalGuidanceState(summary), previous?.Revision,
+                $"{key}:{Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(summary)))[..16]}"), cancellationToken);
+        }
+        catch (Exception error) when (error is not OperationCanceledException)
+        {
+            // Best effort: the ArchitectureSupportCompleted comment still carries the same guidance.
+        }
+    }
+
+    /// <summary>The technical lead's guidance as the bounded completion summary (platform comment limit is 8192).</summary>
+    internal static string GuidanceSummary(SoftwareArchitectureGuidance guidance)
+    {
+        static string Lines(string heading, IReadOnlyList<string>? items) =>
+            items is { Count: > 0 } ? $"{heading}:\n" + string.Join("\n", items.Take(12).Select(x => "- " + x)) + "\n\n" : "";
+        var text = "Technical guidance consumed; the exact blocked stage was submitted for governed retry.\n\n" +
+            $"Diagnosis: {guidance.Diagnosis}\n\n" +
+            Lines("Next steps", guidance.OrderedNextSteps) + Lines("Invariants", guidance.Invariants) +
+            Lines("Design decisions", guidance.RelevantDesignDecisions) + Lines("Verification", guidance.Verification) +
+            Lines("Remaining risks", guidance.RemainingRisks);
+        return text.Length <= 7500 ? text.TrimEnd() : text[..7497] + "...";
+    }
+
 }
+
+internal sealed record TechnicalGuidanceState(string Summary);

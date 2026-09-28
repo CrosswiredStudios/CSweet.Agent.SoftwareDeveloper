@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.12.4
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.13.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.12.4`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.13.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -416,3 +416,18 @@ Assigned engineering stages implement and validate code in the authorized snapsh
 ## Review-driven rework (1.12.4)
 
 Assigned coding consumes completed technical-review and QA rejection results from `WorkExecutionAssignmentV1.PriorOutcomes`, with exact commit evidence and bounded findings. The model must compare each finding with the current source and either fix it or provide evidence for a resolved/disputed finding. Prior findings do not waive acceptance criteria. A new attempt removes only its local previous `.csweet/outcome.json` before model execution and requires fresh validation evidence; source edits remain retained.
+
+## Rework that needs no code change (1.13.0)
+
+A rejected or failed review does not always mean the code is wrong. Sometimes every finding is already fixed in the candidate, or the remaining findings cannot be addressed in code at all, for example a measurement that needs a browser, device or network that no role has. Daniel now handles this the way a developer on a human team would:
+
+- Each review finding reaches the coding model with a stable ID (`R1.2`). The completion report answers every ID with `fixed`, `already-resolved`, `disputed` or `needs-decision`, plus evidence.
+- If the workspace is unchanged and every finding is `already-resolved` or `disputed`, Daniel **resubmits the unchanged candidate**. He reuses the exact prior publication for the workspace base commit from this item execution, posts the per-finding evidence as a ticket comment, and returns `code-published` so technical review and QA re-examine the same SHA.
+- If any finding is `needs-decision` or unanswered, Daniel returns **Blocked with a decision request**. The request names the unchanged candidate, the decisions needed, what is already addressed, and the options (amend or defer criteria, provide tooling, or give code direction). The outcome carries the diagnostic `decision-required:v1`, and no architecture support is requested because nothing needs debugging.
+- If a finding is reported as `fixed` but nothing changed, the report is inconsistent and the stage blocks as before.
+- With no review to answer, for example in a replacement sprint after an owner scope amendment, unchanged work resubmits the retained candidate when it is known. Daniel remembers each publication in operating state and falls back to his own earlier publication evidence comments. Without a known candidate, he asks the manager to confirm the ticket is already satisfied or to re-scope it.
+
+- If review rejects the same resubmitted build a second time, Daniel stops resubmitting and asks for a tie-break. When the manager retries the stage with a direction, Daniel follows that direction. Retry directions arrive as `manager-direction` assignment evidence.
+- For genuine technical failures Daniel asks the team's technical lead for guidance: the Architect, or the Technical Director on game teams.
+
+Decision summaries are bounded to fit the platform's block reason. There are no new capabilities, grants or network access.

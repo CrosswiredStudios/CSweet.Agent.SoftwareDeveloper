@@ -26,7 +26,14 @@ public sealed record SoftwareDevelopmentOutcome(
     string Summary,
     IReadOnlyList<string> ChangedFiles,
     IReadOnlyList<SoftwareDevelopmentValidation> Validations,
-    IReadOnlyList<string>? RemainingRisks = null);
+    IReadOnlyList<string>? RemainingRisks = null,
+    IReadOnlyList<FindingResolution>? FindingResolutions = null);
+
+/// <summary>How the developer answered one prior review finding, identified by its prompt ID (for example R1.2).</summary>
+public sealed record FindingResolution(
+    string FindingId,
+    string Resolution,
+    string Evidence);
 
 public sealed record SoftwareDevelopmentValidation(
     string Command,

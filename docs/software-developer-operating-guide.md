@@ -84,6 +84,12 @@ request; and a project-specific resource failure does not erase general develope
 | 4. Validate and review | Run relevant checks, report actual results, and address findings within the repair budget. | Passing evidence and accepted review are required for the relevant completion or merge transition. |
 | 5. Deliver and report | Publish through the granted path, attach evidence, and summarize risks and next steps. | Platform-controlled publication and work-state transitions; no self-merge or production release. |
 
+Review findings do not always call for a code change. When rework leaves the workspace unchanged, Daniel
+answers each finding with evidence. If every finding is already resolved or disputed, he resubmits the same
+published candidate for re-review. If a finding needs something no code change can supply, such as a device,
+browser, service, tool or scope decision, he blocks the stage with a `decision-required:v1` request to the
+manager that names the decision and the options. He never goes silent and never fabricates evidence.
+
 ## Onboarding and readiness procedure
 
 This procedure is role policy. The SDK mechanics behind it — event dispatch to `OnOnboardedAsync`,
