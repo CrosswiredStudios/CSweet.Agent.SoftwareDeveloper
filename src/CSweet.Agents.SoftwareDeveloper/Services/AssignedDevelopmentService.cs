@@ -164,6 +164,9 @@ internal sealed partial class AssignedDevelopmentService(
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
         {
+            // A missing tool is an environment gap, not a defect to debug: route it to a decision maker.
+            if (DevelopmentDiagnostics.MissingToolDecision(outcome, itemIdentifier) is { } decision)
+                throw new DecisionRequiredException(decision);
             throw new InvalidOperationException(DevelopmentDiagnostics.FailedValidationSummary(outcome));
         }
 

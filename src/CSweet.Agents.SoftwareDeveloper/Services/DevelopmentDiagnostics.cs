@@ -151,6 +151,48 @@ Development is blocked: {headline}
         }
         return null;
     }
+    // Exit 127 is the POSIX shell's "command not found"; 9009 is cmd.exe's.
+    private static readonly string[] MissingToolMarkers =
+    [
+        "command not found",
+        "is not recognized as an internal or external command",
+        "is not recognized as the name of a cmdlet"
+    ];
+
+    internal static bool IsMissingTool(SoftwareDevelopmentValidation validation) =>
+        (!validation.Succeeded || validation.ExitCode != 0) &&
+        (validation.ExitCode is 127 or 9009 ||
+         MissingToolMarkers.Any(marker => (validation.DiagnosticExcerpt ?? string.Empty).Contains(marker, StringComparison.OrdinalIgnoreCase)));
+
+    internal static string ToolName(string command)
+    {
+        foreach (var token in command.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (token.Contains('=', StringComparison.Ordinal) || token is "sudo" or "env" or "time") continue;
+            return token.Trim('`', '"', '\'');
+        }
+        return command.Trim();
+    }
+
+    /// <summary>
+    /// When every failed check failed only because its tool is not installed in the runtime, no code change can
+    /// pass it: the environment or the ticket has to change. Returns the decision a manager needs, or null when
+    /// any failure is a real check result that the developer should fix.
+    /// </summary>
+    internal static string? MissingToolDecision(SoftwareDevelopmentOutcome outcome, string itemIdentifier)
+    {
+        var failed = outcome.Validations.Where(x => !x.Succeeded || x.ExitCode != 0).ToList();
+        if (failed.Count == 0 || !failed.All(IsMissingTool)) return null;
+        var tools = failed.Select(x => ToolName(x.Command)).Where(x => x.Length > 0)
+            .Distinct(StringComparer.Ordinal).Take(10).Select(x => $"`{x}`").ToList();
+        var checks = string.Join(Environment.NewLine, failed.Take(10).Select(x =>
+            $"- `{x.Command}` exited {x.ExitCode}: {SanitizeBlocker(x.DiagnosticExcerpt ?? "No diagnostic excerpt.")}"));
+        return $"Decision needed on {itemIdentifier}: my development environment doesn't have {string.Join(", ", tools)} installed, " +
+            $"so the ticket's checks can't run and no code change can make them pass.{Environment.NewLine}{checks}{Environment.NewLine}{Environment.NewLine}" +
+            "Options: provide the toolchain in the agent runtime (install it in the runtime image and certify it), " +
+            "or amend the ticket so its validation doesn't need it. Retry the ticket once either is done.";
+    }
+
     internal static string FailedValidationSummary(SoftwareDevelopmentOutcome outcome)
     {
         var failures = outcome.Validations
