@@ -28,7 +28,7 @@ public class MissingToolDecisionTests
     [InlineData("pwsh -c npm test", 1, "The term 'npm' is not recognized as the name of a cmdlet")]
     [InlineData("npm test", 9009, "'npm' is not recognized as an internal or external command")]
     public void Windows_and_PowerShell_missing_commands_are_recognized(string command, int exit, string diagnostic) =>
-        Assert.NotNull(DevelopmentDiagnostics.MissingToolDecision(Outcome(new(command, false, exit, diagnostic)), "T-1"));
+        Assert.NotNull(DevelopmentDiagnostics.MissingToolDecision(Outcome(new SoftwareDevelopmentValidation(command, false, exit, diagnostic)), "T-1"));
 
     [Fact]
     public void Real_check_failures_stay_with_the_developer()
@@ -37,8 +37,8 @@ public class MissingToolDecisionTests
             new("node -v", false, 127, "node: command not found"),
             new("dotnet test", false, 1, "FAIL rotation keeps the piece in bounds")), "T-1"));
         Assert.Null(DevelopmentDiagnostics.MissingToolDecision(Outcome(
-            new("ls missing.txt", false, 2, "ls: cannot access 'missing.txt': No such file or directory")), "T-1"));
-        Assert.Null(DevelopmentDiagnostics.MissingToolDecision(Outcome(new("dotnet test", true, 0)), "T-1"));
+            new SoftwareDevelopmentValidation("ls missing.txt", false, 2, "ls: cannot access 'missing.txt': No such file or directory")), "T-1"));
+        Assert.Null(DevelopmentDiagnostics.MissingToolDecision(Outcome(new SoftwareDevelopmentValidation("dotnet test", true, 0)), "T-1"));
     }
 
     [Theory]

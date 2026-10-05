@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.13.1
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.13.2
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.13.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.13.2`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -261,7 +261,7 @@ Review the added workspace-sync declaration during the normal update. Source tra
 
 Temporary LLM provider outages retain the development task and schedule a review after five minutes. Once the provider is available, the next review retries coding in the existing workspace. Configuration errors and denied grants still require correction.
 
-The unattended harness authorizes reads and writes only in its assigned file store. It continues incomplete coding responses for up to three turns and reports unsupported approval pauses explicitly. If a test instance expires before deployment has an unresolved command, Daniel retains the source commit and requests a replacement through the normal compute grant checks after teardown is confirmed. The Maximum compute replacements setting bounds attempts per task (default 3, zero disables replacement), including already saved replacement attempts. Failed and destroyed environments recover through the same path; unresolved commands are retained and never replayed on another instance. Recovery refreshes platform placement defaults and preserves committed source and validation evidence. Network grants are never copied to the replacement.
+The unattended harness authorizes reads and writes only in its assigned file store. It continues incomplete coding responses for up to six turns and reports unsupported approval pauses explicitly. `RunImplementationAsync` recognizes a final response containing only reasoning with tool-call syntax: it checkpoints retained files, reports `model.tool_protocol` as an operational provider-formatting problem, and stops continuation. It never executes reasoning text as a tool call. Correct the provider reasoning/tool-call parser or select a compatible model, then retry the blocked ticket. If a test instance expires before deployment has an unresolved command, Daniel retains the source commit and requests a replacement through the normal compute grant checks after teardown is confirmed. The Maximum compute replacements setting bounds attempts per task (default 3, zero disables replacement), including already saved replacement attempts. Failed and destroyed environments recover through the same path; unresolved commands are retained and never replayed on another instance. Recovery refreshes platform placement defaults and preserves committed source and validation evidence. Network grants are never copied to the replacement.
 
 ## Solo MVP planning
 

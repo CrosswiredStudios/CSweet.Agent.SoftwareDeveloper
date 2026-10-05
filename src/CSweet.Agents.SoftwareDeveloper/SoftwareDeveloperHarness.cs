@@ -64,6 +64,17 @@ internal static class SoftwareDeveloperHarness
                 throw new InvalidOperationException("The implementation paused for a tool approval that cannot be handled in unattended development. No approval was granted.");
             if (File.Exists(Path.Combine(workspacePath, ".csweet", "outcome.json"))) return;
             if (checkpoint is not null) await checkpoint(cancellationToken);
+            var lastAssistant = response.Messages.LastOrDefault(x => x.Role == ChatRole.Assistant);
+            if (lastAssistant is not null &&
+                !lastAssistant.Contents.OfType<FunctionCallContent>().Any() &&
+                !lastAssistant.Contents.OfType<TextContent>().Any(x => !string.IsNullOrWhiteSpace(x.Text)))
+            {
+                var reasoning = string.Concat(lastAssistant.Contents.OfType<TextReasoningContent>().Select(x => x.Text));
+                if (reasoning.Contains("<tool_call|>", StringComparison.Ordinal) ||
+                    reasoning.Contains("<|tool_call>", StringComparison.Ordinal) ||
+                    reasoning.Contains("<tool_call>", StringComparison.Ordinal))
+                    throw new ModelToolProtocolException();
+            }
             var finalizationTurn = turn == maximumTurns - 2;
             prompt = finalizationTurn
                 ? "Finalization is required now. Inspect the current workspace, run the focused validation needed for this ticket, and write .csweet/outcome.json with the actual results. Do not stop after describing the next step."

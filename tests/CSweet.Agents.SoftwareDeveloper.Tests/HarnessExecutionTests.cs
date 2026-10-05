@@ -7,15 +7,16 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class HarnessExecutionTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Executes_confined_file_tools_and_continues_an_incomplete_turn(bool stopEarly)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Executes_confined_file_tools_and_continues_an_incomplete_turn(bool stopEarly, bool reasoningToolHint)
     {
         var root = Path.Combine(Path.GetTempPath(), "csweet-harness-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
         try
         {
-            using var client = new ScriptedClient(stopEarly);
+            using var client = new ScriptedClient(stopEarly, reasoningToolHint: reasoningToolHint);
             await using var shell = SoftwareDeveloperHarness.CreateShell(root);
             var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
             var session = await harness.CreateSessionAsync();
@@ -24,6 +25,39 @@ public sealed class HarnessExecutionTests
             Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(root, ".csweet", "outcome.json")));
             Assert.Equal(3, client.Results);
             Assert.Equal(stopEarly ? 5 : 4, client.Calls);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData("<tool_call|>")]
+    [InlineData("<|tool_call>")]
+    [InlineData("<tool_call>")]
+    public async Task Misformatted_reasoning_tool_calls_checkpoint_then_report_provider_recovery_without_continuing(string marker)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-harness-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "partial.txt"), "Retained source");
+            using var client = new ScriptedClient(false, malformedToolCall: marker);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            string? checkpoint = null;
+            var error = await Assert.ThrowsAsync<ModelToolProtocolException>(() =>
+                SoftwareDeveloperHarness.RunImplementationAsync(harness, session, "Implement the ticket.", root, default,
+                    async ct => checkpoint = await File.ReadAllTextAsync(Path.Combine(root, "partial.txt"), ct)));
+            Assert.Equal("Retained source", checkpoint);
+            Assert.Equal(1, client.Calls);
+            Assert.Equal(0, client.Results);
+            Assert.True(DevelopmentFailurePolicy.IsOperational(error));
+            var diagnostic = DevelopmentDiagnostics.DevelopmentBlockerMessage(error, null, "Implementation");
+            Assert.Contains("model.tool_protocol", error.Message);
+            Assert.Contains("model.tool\\_protocol", diagnostic);
+            Assert.Contains("reasoning parsing", diagnostic);
+            Assert.Contains("retry the blocked ticket", diagnostic);
+            Assert.DoesNotContain("repair attempts are exhausted", diagnostic);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -176,7 +210,9 @@ public sealed class HarnessExecutionTests
         bool promisesOnly = false,
         bool expectApproval = false,
         bool contextLimitOnce = false,
-        bool transportFailureOnce = false) : IChatClient
+        bool transportFailureOnce = false,
+        string? malformedToolCall = null,
+        bool reasoningToolHint = false) : IChatClient
     {
         public int Calls, Results;
         public void Dispose() { }
@@ -194,6 +230,12 @@ public sealed class HarnessExecutionTests
             if (transportFailureOnce && Calls == 1)
                 throw new HttpRequestException("Error while copying content to a stream.", new IOException("The response ended prematurely."));
             Results = messages.SelectMany(x => x.Contents).OfType<FunctionResultContent>().Select(x => x.CallId).Distinct().Count();
+            if (malformedToolCall is not null)
+            {
+                yield return new(ChatRole.Assistant, [new TextReasoningContent(malformedToolCall[..4])]);
+                yield return new(ChatRole.Assistant, [new TextReasoningContent(malformedToolCall[4..] + "file_access_ls")]);
+                yield break;
+            }
             if (promisesOnly || stopEarly && Calls == 1)
             {
                 yield return new(ChatRole.Assistant, "I'll start by inspecting the workspace.");
@@ -211,7 +253,10 @@ public sealed class HarnessExecutionTests
                 var args = step == 1 ? new Dictionary<string, object?> { ["directory"] = "" } :
                     new Dictionary<string, object?> { ["fileName"] = step == 2 ? "app.txt" : ".csweet/outcome.json",
                         ["content"] = step == 2 ? "implemented" : "{}", ["overwrite"] = true };
-                yield return new(ChatRole.Assistant, [new FunctionCallContent("call-" + step, name, args)]);
+                var contents = new List<AIContent>();
+                if (reasoningToolHint) contents.Add(new TextReasoningContent("<tool_call|>"));
+                contents.Add(new FunctionCallContent("call-" + step, name, args));
+                yield return new(ChatRole.Assistant, contents);
             }
             else yield return new(ChatRole.Assistant, "Implementation complete.");
         }

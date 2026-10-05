@@ -21,7 +21,13 @@ internal static class DevelopmentDiagnostics
         var heading = "What happened";
         var platform = error as PlatformCapabilityException;
 
-        if (error is ImplementationOutcomeException)
+        if (error is ModelToolProtocolException)
+        {
+            headline = "The selected model provider did not return executable tool calls.";
+            explanation = "Source files are retained. Tool-call text inside reasoning was not executed, and automatic continuation stopped.";
+            next = "The administrator should correct the selected model's tool-call and reasoning parsing in the provider, or select a model with compatible structured tool calling. Then retry the blocked ticket so Daniel can resume from retained files.";
+        }
+        else if (error is ImplementationOutcomeException)
         {
             headline = "The completion report could not be accepted.";
             explanation = "The configured task repair attempts are exhausted.";
