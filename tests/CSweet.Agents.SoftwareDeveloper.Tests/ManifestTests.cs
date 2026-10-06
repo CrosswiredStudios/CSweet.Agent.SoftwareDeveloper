@@ -51,7 +51,7 @@ public sealed class ManifestTests
             .ToArray();
 
         Assert.Equal(
-            [ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1", 
+            [WorkBoardCapabilities.Read, ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
                 PersonalTodoCapabilities.Read,
                 PersonalTodoCapabilities.Add,
                 PersonalTodoCapabilities.Reorder,
@@ -91,7 +91,7 @@ public sealed class ManifestTests
         Assert.Equal("Allowlist", root.GetProperty("webAccess").GetProperty("mode").GetString());
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
         Assert.Equal(
-            [ProjectIntakeCapabilities.Changed, AgentLifecycleEvents.Onboarded, "com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
+            [TicketConversations.Discussion.Changed, ProjectIntakeCapabilities.Changed, AgentLifecycleEvents.Onboarded, "com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
                 AgentCoordinationEvents.TurnRequested, CommunicationEvents.MessageReceived, "com.csweet.compute.changed.v1", "com.csweet.compute.available.v1", TaskDeliveryCapabilities.Changed],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(item => item.GetString()!).ToArray());

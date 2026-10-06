@@ -17,6 +17,7 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleAttentionReviewAsync(AgentAttentionReviewContext review, AgentRuntimeContext context, CancellationToken ct)
     {
+        await TicketConversations.Discussion.RecoverAsync(context, token => new DevelopmentChatClientProvider(Settings, _llmClientFactory).CreateAsync(context, token), ct);
         foreach (var intake in await context.Platform.Projects.ListAsync(ct))
             await ResumeProjectIntakeAsync(intake, context, ct);
         var pending = await context.Platform.SourceControl.ListTaskReviewsAsync(ct);
@@ -31,6 +32,12 @@ public sealed partial class SoftwareDeveloperAgent
 
     public override async Task HandleEventAsync(AgentEventEnvelope message, AgentRuntimeContext context, CancellationToken token)
     {
+        if (message.EventType == TicketConversations.Discussion.Changed)
+        {
+            await TicketConversations.Discussion.HandleAsync(message, context,
+                ct => new DevelopmentChatClientProvider(Settings, _llmClientFactory).CreateAsync(context, ct), token);
+            return;
+        }
         if (message.EventType == ProjectIntakeCapabilities.Changed)
         {
             var hint = message.Data.Deserialize<ProjectIntakeChanged>(SerializerOptions) ?? throw new JsonException("Missing project intake event.");

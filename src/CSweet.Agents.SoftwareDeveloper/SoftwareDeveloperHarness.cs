@@ -12,7 +12,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
-        Func<CancellationToken, Task>? checkpoint = null)
+        Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null)
     {
         const int maximumTurns = 6;
         var assignmentPrompt = prompt;
@@ -58,6 +58,11 @@ internal static class SoftwareDeveloperHarness
                     "Inspect the current source and .csweet state and write .csweet/outcome.json with only actual results.\n\n" +
                     "Original assignment:\n" + assignmentPrompt;
                 continue;
+            }
+            if (shouldPause?.Invoke() == true)
+            {
+                if (checkpoint is not null) await checkpoint(cancellationToken);
+                return;
             }
             var approval = response.Messages.SelectMany(x => x.Contents).OfType<ToolApprovalRequestContent>().FirstOrDefault();
             if (approval is not null)

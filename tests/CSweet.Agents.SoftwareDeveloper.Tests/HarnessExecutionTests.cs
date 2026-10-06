@@ -6,6 +6,27 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class HarnessExecutionTests
 {
+    [Fact]
+    public async Task DiscussionWaitCheckpointsAndStopsWithoutDemandingAnOutcome()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-discussion-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new ScriptedClient(false, promisesOnly: true);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            var saved = 0;
+            await SoftwareDeveloperHarness.RunImplementationAsync(harness, session, "Ask for clarification.", root, default,
+                _ => { saved++; return Task.CompletedTask; }, () => true);
+            Assert.Equal(1, client.Calls);
+            Assert.Equal(1, saved);
+            Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
