@@ -51,7 +51,7 @@ public sealed class ManifestTests
             .ToArray();
 
         Assert.Equal(
-            [WorkBoardCapabilities.Read, ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
+            [PlatformCapabilities.ArtifactSubmit, PlatformCapabilities.ArtifactCreate, PlatformCapabilities.ArtifactRead, WorkBoardCapabilities.Read, ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
                 PersonalTodoCapabilities.Read,
                 PersonalTodoCapabilities.Add,
                 PersonalTodoCapabilities.Reorder,

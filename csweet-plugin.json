@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.14.0",
+  "version": "1.15.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -31,6 +31,232 @@
     "maximumVersion": "2.x"
   },
   "provides": [
+    {
+      "name": "work.execution.run.v2",
+      "description": "Execute the authoritative task or delivery-plan scope with exact revision evidence and independent QA.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "executionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "stageExecutionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "workstreamId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "boardId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "organizationUserId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "itemId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "deliveryPlanId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sprintId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "sprintExecutionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "agentInstallationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "policyRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "scopeRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "assignmentRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "planningRevision": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "traversal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "identifier": {
+            "type": "string"
+          },
+          "stageKey": {
+            "type": "string"
+          },
+          "instructions": {
+            "type": "string"
+          },
+          "deadline": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "scope": {
+            "enum": [
+              "Task",
+              "Story",
+              "Epic",
+              "Release"
+            ]
+          },
+          "item": {
+            "type": "object"
+          },
+          "input": {
+            "type": "object"
+          },
+          "priorOutcomes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "permittedOutcomes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "candidate": {
+            "type": [
+              "object",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "executionId",
+          "stageExecutionId",
+          "attemptId",
+          "organizationId",
+          "workstreamId",
+          "boardId",
+          "scope",
+          "scopeRevision",
+          "organizationUserId",
+          "assignmentRevision",
+          "planningRevision",
+          "stageKey",
+          "attempt",
+          "deadline",
+          "instructions",
+          "item",
+          "input",
+          "priorOutcomes",
+          "evidence",
+          "permittedOutcomes"
+        ],
+        "additionalProperties": false
+      },
+      "outputSchema": {
+        "type": "object",
+        "properties": {
+          "stageExecutionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "disposition": {
+            "enum": [
+              "Completed",
+              "Blocked",
+              "Failed"
+            ]
+          },
+          "outcomeCode": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "output": {},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "stageExecutionId",
+          "attemptId",
+          "disposition",
+          "outcomeCode",
+          "summary",
+          "output",
+          "evidence",
+          "diagnostics"
+        ],
+        "additionalProperties": false
+      },
+      "executionTimeoutSeconds": 3600,
+      "idempotency": "work-item",
+      "riskClass": "standard"
+    },
     {
       "name": "work.execution.run.v1",
       "description": "Execute one pinned board workflow stage and return a structured outcome without mutating the card transition.",
@@ -447,19 +673,64 @@
   ],
   "requires": [
     {
+      "name": "platform.artifact.submit.v1",
+      "scope": "organization",
+      "purpose": "Deliver or independently review the exact assigned task revision under current board grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.artifact.create.v1",
+      "scope": "organization",
+      "purpose": "Deliver or independently review the exact assigned task revision under current board grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "platform.artifact.read.v1",
+      "scope": "organization",
+      "purpose": "Deliver or independently review the exact assigned task revision under current board grants.",
+      "modelVisible": false
+    },
+    {
       "name": "work.board.read",
       "scope": "team",
       "purpose": "Read current ticket context to answer directed discussion and recover missed notifications.",
       "modelVisible": false
     },
-    {"name": "work.project-intake.retain.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.read.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.list.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.discover.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.choose.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.start.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-    {"name": "work.project-intake.manager-request.v1", "scope": "organization", "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."},
-
+    {
+      "name": "work.project-intake.retain.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.read.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.list.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.discover.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.choose.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.start.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
+    {
+      "name": "work.project-intake.manager-request.v1",
+      "scope": "organization",
+      "purpose": "Retain requests and coordinate authorized project setup without granting creation or assignment authority."
+    },
     {
       "name": "work.calendar.read.v1",
       "scope": "organization",

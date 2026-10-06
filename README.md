@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.14.0
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.15.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.14.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.15.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -209,7 +209,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.51.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
+Built with `CSweet.Agent.SDK` 3.59.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
 
 ## Project status
 
@@ -432,7 +432,7 @@ A rejected or failed review does not always mean the code is wrong. Sometimes ev
 
 Decision summaries are bounded to fit the platform's block reason. There are no new capabilities, grants or network access.
 
-## Ticket discussion (1.14.0)
+## Ticket discussion (1.15.0)
 
 Adds ticket thread reads and directed response requests to the confined coding harness. Questions pause and checkpoint the attempt; replay recovers the retained request. The Producer can resume after the exact teammate replies.
 
@@ -443,3 +443,7 @@ requests are ignored. Informational notifications do not trigger automatic conve
 Bounded attention recovery scans the current assigned project for missed requests. The host retains
 undelivered notifications while offline; install the matching C-Sweet host update and approve new
 manifest permissions. Comments provide context, never execution authority or review approval.
+
+## Hierarchical delivery
+
+The V2 assignment identifies Task, Story, Epic or Release scope. Tasks require an authorized sprint; aggregate reviews require an active delivery plan and do not invent sprint identities. Use the exact assigned branch, commit or artifact revision. Every task requires independent QA, including documents. Managers accept aggregate candidates using current evidence; task completion does not promote to main or authorize deployment.

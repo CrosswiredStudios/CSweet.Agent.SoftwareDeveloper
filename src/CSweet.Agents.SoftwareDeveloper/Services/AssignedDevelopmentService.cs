@@ -30,6 +30,9 @@ internal sealed partial class AssignedDevelopmentService(
             var successCode = SuccessfulOutcomeCode(assignment.Input);
             var item = await context.Platform.Work.ReadItemAsync(
                 new WorkItemReference(assignment.BoardId, assignment.ItemId), cancellationToken);
+            if (item.Delivery?.DeliveryKind == "Artifact")
+                return await ArtifactTaskDelivery.ExecuteAsync(assignment, item, context,
+                    await _chatClients.CreateAsync(context, cancellationToken), cancellationToken);
             if (item.Development is null)
                 throw new InvalidOperationException("The development stage requires a software development brief.");
             var output = await ExecuteAssignedTicketAsync(
