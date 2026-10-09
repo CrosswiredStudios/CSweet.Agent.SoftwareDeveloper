@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.15.0",
+  "version": "1.15.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -1092,7 +1092,7 @@
       "label": "Maximum context-window tokens",
       "required": true,
       "secret": false,
-      "defaultValue": 128000
+      "defaultValue": 256000
     },
     {
       "key": "maxOutputTokens",
@@ -1100,7 +1100,7 @@
       "label": "Maximum output tokens",
       "required": true,
       "secret": false,
-      "defaultValue": 16000
+      "defaultValue": 128000
     },
     {
       "key": "maximumComputeReplacements",

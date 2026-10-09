@@ -6,8 +6,8 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal static class SoftwareDeveloperHarness
 {
-    internal const int DefaultContextWindowTokens = 128_000;
-    internal const int DefaultOutputTokens = 16_000;
+    internal const int DefaultContextWindowTokens = 256_000;
+    internal const int DefaultOutputTokens = 128_000;
     internal const int MaximumIterationsPerRequest = 48;
 
     internal static async Task RunImplementationAsync(
