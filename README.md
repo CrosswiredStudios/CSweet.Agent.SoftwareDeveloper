@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.15.2
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.15.3
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.15.2`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.15.3`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -452,4 +452,12 @@ Model token settings default to 256,000 context-window tokens (maxContextWindowT
 
 ## Certified release build-readiness
 
-SDK 3.63.0 allows the Producer to assign build-readiness to an updated Technical Director or Developer when no Build Release Engineer is available. The assigned agent must advertise `work.execution.build-readiness.v1` and V2 execution. `DeliveryBuildReadiness.ExecuteAsync` requests the configured certified provider build for every exact release repository candidate, returns durable pending build identities, and verifies successful output provenance. It grants no deployment, publication, or independent product approval authority. Existing project, repository and build grants remain required.
+SDK 3.64.0 allows the Producer to assign build-readiness to an updated Technical Director or Developer when no Build Release Engineer is available. The assigned agent must advertise `work.execution.build-readiness.v1` and V2 execution. `DeliveryBuildReadiness.ExecuteAsync` requests the configured certified provider build for every exact release repository candidate, returns durable pending build identities, and verifies successful output provenance. It grants no deployment, publication, or independent product approval authority. Existing project, repository and build grants remain required.
+
+## Project compute test delivery
+
+- Discover and include current approved project compute options in assigned implementation guidance.
+- Supply runnable browser test packaging (a compatible Dockerfile or dependency-free static index.html) without requiring a certified toolchain.
+- Consume Agent SDK 3.64.0 and WorkManagement.Contracts 3.26.0.
+
+Current compute review links are local to the provider machine. Public hosting remains a separate capability. Pending setup and local-link approval preserve durable progress; unknown command outcomes are not automatically repeated.
