@@ -19,6 +19,7 @@ public sealed class ManifestTests
         Assert.Equal(agent.Version, manifest.Version);
         Assert.Contains(SoftwareDeveloperProfile.PrimaryCapability, manifest.Capabilities);
         Assert.Contains(WorkManagementCapabilityNames.ExecutionRunV1, manifest.Capabilities);
+        Assert.Contains(DeliveryBuildReadiness.ExecutionCapability, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);
         using var document = JsonDocument.Parse(await File.ReadAllTextAsync(path));
@@ -51,7 +52,7 @@ public sealed class ManifestTests
             .ToArray();
 
         Assert.Equal(
-            [PlatformCapabilities.ArtifactSubmit, PlatformCapabilities.ArtifactCreate, PlatformCapabilities.ArtifactRead, WorkBoardCapabilities.Read, ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
+            [WorkDeliveryCapabilities.Read, PlatformCapabilities.ArtifactSubmit, PlatformCapabilities.ArtifactCreate, PlatformCapabilities.ArtifactRead, WorkBoardCapabilities.Read, ProjectIntakeCapabilities.Retain, ProjectIntakeCapabilities.Read, ProjectIntakeCapabilities.List, ProjectIntakeCapabilities.Discover, ProjectIntakeCapabilities.Choose, ProjectIntakeCapabilities.Start, ProjectIntakeCapabilities.Manager, "work.calendar.read.v1", "work.calendar.create.v1", "work.calendar.update.v1", "work.calendar.cancel.v1", "work.calendar.schedule.v1",
                 PersonalTodoCapabilities.Read,
                 PersonalTodoCapabilities.Add,
                 PersonalTodoCapabilities.Reorder,
