@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.15.3
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.16.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.15.3`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.16.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -209,7 +209,7 @@ Keep `csweet-plugin.json` at the repository root. Import a reviewed GitHub commi
 clone this repository as an immediate child of C-Sweet's configured local agent catalog. Review
 the complete manifest, especially its model and repository grants, before approving installation.
 
-Built with `CSweet.Agent.SDK` 3.59.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
+Built with `CSweet.Agent.SDK` 3.65.0 and `CSweet.WorkManagement.Contracts` 3.24.0.
 
 ## Project status
 
@@ -249,13 +249,13 @@ After the Docker build and HTTP health check succeed, Daniel returns an **Open a
 
 Current limits: one-hour ephemeral Linux VM, cached `csweet/python:3.12` and `csweet/node:22` bases, 16 MiB source bundle, 30 seconds per guest command and 8 KiB command output. Guest outbound internet, arbitrary dependency downloads, public deployment and long builds are not supported by this local provider yet. Required unavailable dependencies are reported as blockers.
 
-The chat and personal-work callbacks use `context.Platform`, including SDK 3.51.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
+The chat and personal-work callbacks use `context.Platform`, including SDK 3.65.0's `Git.PreparePersonalAsync`. Added declarations are `source-control.personal-work.prepare.v1`, `platform.agent-operating-state.read.v1`, `platform.agent-operating-state.write.v1` and `platform.user-input.request.v1`. Repository policy, live personal-task claim, installation, owner and team permissions are checked by Core. These declarations do not grant arbitrary repository creation or production deployment authority.
 
 Compute events are wake hints; the SDK claims the owning personal task before advancing it, and all operations re-read authorized state. A five-minute scheduled recovery deadline covers missed notifications. Work displays its current stage or blocking reason while the model or compute is idle.
 
 ## Workspace transfer recovery (1.5.0)
 
-Uses SDK 3.46.1 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
+Uses SDK 3.65.0 and the added `git.workspace.sync.v1` declaration. The SDK downloads the authorized Core snapshot into the isolated runtime's writable temporary workspace before coding and uploads edited source before publication. It never mounts a host path or exposes Git credentials. Existing local edits survive repeated calls; a replacement runtime restores the latest uploaded snapshot. A requeued 1.4.0 task automatically replaces its old broker-only workspace path without creating another repository.
 
 Review the added workspace-sync declaration during the normal update. Source transfer currently supports 512 KiB compressed snapshots, 16 MiB content and 4,096 files; local `.csweet` control files are omitted. Application code must fit these bounds. Network grants and Docker compute limits remain separate.
 
@@ -269,11 +269,11 @@ When a human asks Daniel to create his own tickets for an unplanned application,
 
 Daniel runs one task per durable callback, saves its repository snapshot and validation evidence, then continues with the next task. Stories roll up progress; failures block the active task, story, and epic. Requeue the epic to resume the retained plan. Existing assigned-work planning and deployments already in progress remain supported. Networking still requires a separate explicit grant.
 
-The new manifest requests work.personal-plan.create.v1 and work.personal-plan.report-task.v1. These operate only under the owning personal-work claim and scoped grants. Deploying this release requires SDK 3.46.1, WorkManagement.Contracts 3.22.0, and the corresponding C-Sweet planning broker update.
+The new manifest requests work.personal-plan.create.v1 and work.personal-plan.report-task.v1. These operate only under the owning personal-work claim and scoped grants. Deploying this release requires SDK 3.65.0, WorkManagement.Contracts 3.22.0, and the corresponding C-Sweet planning broker update.
 
 Compute lifetime and repair settings: `computeLifetimeSeconds` defaults to 0 (until explicitly released); positive seconds request a timed lease. This requires the updated C-Sweet broker/provider and compatible compute grants. Existing signed leases retain their original expiry. Network grants remain explicit and instance-specific. `maximumDeploymentRepairs` and `maximumPlanRepairs` default to 2. `deploymentDiagnosticCharacters` defaults to 6000; Docker build logs are retained in the compute work directory and the error tail is returned for repair.
 
-SDK 3.51.0 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.11.0. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
+SDK 3.65.0 and WorkManagement Contracts 3.24.0 are the dependencies for agent 1.11.0. An expired timed instance may receive one additional replacement after switching to `computeLifetimeSeconds: 0`, even if earlier failures exhausted the configured replacement budget. This is a durable, one-time policy transition: it does not reset counters, revive disabled retries (`maximumComputeReplacements: 0`), bypass teardown or grants, or renew on requeue/update. Core attention recovery reopens development blockers and their plan children after the agent update. `maximumDeploymentRepairs` is a budget for one reproducible Docker build or health-check failure; if a repair exposes a different failure, it begins its own configured budget. Identical repeated failures remain bounded. Owner-facing blocker messages summarize the first failed check in Markdown; raw test output and log paths remain in retained technical diagnostics.
 
 
 ## Completion and interruption recovery (1.8.4)
@@ -374,7 +374,7 @@ Repository preparation uses the saved epic title after planning, without a pre-c
 
 ## Task delivery and merge choices
 
-Personal plans use a branch per task in the existing project repository. Implemented tasks enter Testing, go to the team's QA when available, and wait for a confirmed merge before completion. Managers can approve one exact task, all task merges in a story, or all task merges in an epic, or review first. Ask Daniel about the current setting or change it through normal dialogue. Story overrides take precedence; QA failures and conflicts still require repair. SDK 3.51.0 and the matching platform migration are required. Upgrade grants include task review, preference management, and durable review-change events.
+Personal plans use a branch per task in the existing project repository. Implemented tasks enter Testing, go to the team's QA when available, and wait for a confirmed merge before completion. Managers can approve one exact task, all task merges in a story, or all task merges in an epic, or review first. Ask Daniel about the current setting or change it through normal dialogue. Story overrides take precedence; QA failures and conflicts still require repair. SDK 3.65.0 and the matching platform migration are required. Upgrade grants include task review, preference management, and durable review-change events.
 
 ## Project prerequisite
 
@@ -452,12 +452,16 @@ Model token settings default to 256,000 context-window tokens (maxContextWindowT
 
 ## Certified release build-readiness
 
-SDK 3.64.0 allows the Producer to assign build-readiness to an updated Technical Director or Developer when no Build Release Engineer is available. The assigned agent must advertise `work.execution.build-readiness.v1` and V2 execution. `DeliveryBuildReadiness.ExecuteAsync` requests the configured certified provider build for every exact release repository candidate, returns durable pending build identities, and verifies successful output provenance. It grants no deployment, publication, or independent product approval authority. Existing project, repository and build grants remain required.
+SDK 3.65.0 allows the Producer to assign build-readiness to an updated Technical Director or Developer when no Build Release Engineer is available. The assigned agent must advertise `work.execution.build-readiness.v1` and V2 execution. `DeliveryBuildReadiness.ExecuteAsync` requests the configured certified provider build for every exact release repository candidate, returns durable pending build identities, and verifies successful output provenance. It grants no deployment, publication, or independent product approval authority. Existing project, repository and build grants remain required.
 
 ## Project compute test delivery
 
 - Discover and include current approved project compute options in assigned implementation guidance.
 - Supply runnable browser test packaging (a compatible Dockerfile or dependency-free static index.html) without requiring a certified toolchain.
-- Consume Agent SDK 3.64.0 and WorkManagement.Contracts 3.26.0.
+- Consume Agent SDK 3.65.0 and WorkManagement.Contracts 3.26.0.
 
 Current compute review links are local to the provider machine. Public hosting remains a separate capability. Pending setup and local-link approval preserve durable progress; unknown command outcomes are not automatically repeated.
+
+## Delegation and tracking
+
+SDK 3.65.0 dispatches authenticated delegation before specialist conversation fallback. The manifest requests delegation, work tracking, directory and conversation reads, personal commitments and model interpretation. These declarations require reviewed grants; existing resource permissions and approval rules still apply. The shared SDK owns coordinator reporting and wake recovery.
