@@ -28,7 +28,7 @@ I've built and started “{DevelopmentDiagnostics.BlockerExcerpt(title, 160)}”
             : error is PlatformCapabilityException { Code: PlatformCapabilityErrorCode.Denied }
                 ? "I don't have permission for a step this task needs. Please ask your administrator to review the permission shown on the blocked ticket, then move it to To Do."
                 : error is PlanValidationException
-                    ? $"The checks still failed after my repair attempts: {DevelopmentDiagnostics.BlockerExcerpt(error.Message, 240)}\n\nPlease review the failing check on the ticket. Once the cause is addressed, move it to To Do so I can try again."
+                    ? $"The checks still failed after my repair attempts. {DevelopmentDiagnostics.BlockerExcerpt(error.Message.Replace("\r", string.Empty, StringComparison.Ordinal).Split("\n\n", StringSplitOptions.None)[0], 240)}\n\nPlease review the failing check on the ticket. Once the cause is addressed, move it to To Do so I can try again."
                     : error is ImplementationOutcomeException
                         ? "I couldn't verify the completion report after my repair attempts. The ticket explains which evidence is missing. Please review it before moving the ticket to To Do for another attempt."
                         : $"{DevelopmentDiagnostics.BlockerExcerpt(error.Message, 240)}\n\nI've put the diagnostic and recovery steps on the ticket. Please review those before retrying; I haven't confirmed a review build for this attempt.";

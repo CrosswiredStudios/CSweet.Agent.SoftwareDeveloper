@@ -341,6 +341,11 @@ fix actionable defects, and record evidence for any finding already resolved or 
 finding in the result summary; review feedback never waives the accepted requirements or independent QA.
 If a finding is unclear, read_ticket_discussion and request_ticket_response let you ask its reviewer and pause safely.
 
+Write blocker summaries and ticket questions as a teammate speaking to a person: explain what is missing or failed,
+what that prevents, and what help is needed in two or three plain-language sentences. Keep commands, exit codes,
+and diagnostic output in validation evidence or a separate technical-details section. Do not claim installation
+was attempted or impossible, or attribute a network failure to permissions, unless actual results show that.
+
 Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
 {"summary":"...","changedFiles":["path"],"validations":[{"command":"...","succeeded":true,"exitCode":0,"diagnosticExcerpt":null}],"remainingRisks":[]}
 If retained files already satisfy the ticket, use "changedFiles":[], explain what was verified in summary,

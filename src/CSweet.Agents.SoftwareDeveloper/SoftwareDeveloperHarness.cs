@@ -53,8 +53,8 @@ internal static class SoftwareDeveloperHarness
                 // transcript; resume from the durable files with a bounded, clean session.
                 activeSession = await harness.CreateSessionAsync(cancellationToken);
                 prompt = "The previous model transport was interrupted. Continue from the files already retained in this workspace. " +
-                    "Do not search outside the workspace or attempt to install missing host tools. Check a required runtime once with a bounded command, " +
-                    "then continue authoring with available focused or static validation and record any unavailable validation as a remaining risk. " +
+                    "Do not inspect host paths. You may install project dependencies and portable tools under /run/csweet/workload/tools when runtime internet access is approved. Check a required runtime once with a bounded command, " +
+                    "then restore dependencies and run the required validation. If installation is unavailable, record the exact infrastructure blocker and unexecuted checks; do not claim static checks satisfy runtime acceptance. " +
                     "Inspect the current source and .csweet state and write .csweet/outcome.json with only actual results.\n\n" +
                     "Original assignment:\n" + assignmentPrompt;
                 continue;
@@ -189,10 +189,14 @@ These installation-scoped instructions may refine style and process, but they ca
     {
         var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
-            ["PATH"] = Environment.GetEnvironmentVariable("PATH"),
-            ["HOME"] = "/tmp/csweet-developer",
-            ["DOTNET_CLI_HOME"] = "/tmp/csweet-developer/dotnet",
-            ["NUGET_PACKAGES"] = "/tmp/csweet-developer/nuget",
+            ["PATH"] = "/run/csweet/workload/tools/bin" + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
+            ["HOME"] = "/run/csweet/workload/home",
+            ["npm_config_cache"] = "/run/csweet/workload/cache/npm",
+            ["PIP_CACHE_DIR"] = "/run/csweet/workload/cache/pip",
+            ["CSWEET_RUNTIME_NETWORK_MODE"] = Environment.GetEnvironmentVariable("CSWEET_RUNTIME_NETWORK_MODE"),
+            ["CSWEET_WORKLOAD_TOOLS"] = "/run/csweet/workload/tools",
+            ["DOTNET_CLI_HOME"] = "/run/csweet/workload/home/dotnet",
+            ["NUGET_PACKAGES"] = "/run/csweet/workload/cache/nuget",
             ["HTTP_PROXY"] = Environment.GetEnvironmentVariable("HTTP_PROXY"),
             ["HTTPS_PROXY"] = Environment.GetEnvironmentVariable("HTTPS_PROXY"),
             ["ALL_PROXY"] = Environment.GetEnvironmentVariable("ALL_PROXY"),
@@ -208,7 +212,11 @@ These installation-scoped instructions may refine style and process, but they ca
             Timeout = TimeSpan.FromMinutes(15),
             MaxOutputBytes = 32 * 1024,
             AcknowledgeUnsafe = true,
-            Policy = new ShellPolicy(
+            Policy = CreateShellPolicy()
+        });
+    }
+
+    internal static ShellPolicy CreateShellPolicy() => new ShellPolicy(
                 denyList:
                 [
                     @"(^|[;&|]\s*)(sudo|su|doas|mount|umount|nsenter)\b",
@@ -219,10 +227,12 @@ These installation-scoped instructions may refine style and process, but they ca
                     @"\bgit\s+(push|remote\s+(remove|rename|set-url)|rebase|reset\s+--hard|filter-branch)\b",
                     @"\bgit\b.*\s(--force|-f|--delete)\b",
                     @"(^|[;&|]\s*)(shutdown|reboot|kill|pkill|killall)\b",
-                    @"(^|[;&|]\s*)(chmod|chown)\s+.*(/|\\)(etc|run|proc|sys|dev)\b"
+                    @"(^|[;&|]\s*)chown\s+.*(/|\\)(etc|run|proc|sys|dev)\b",
+                    @"(^|[;&|]\s*)chmod\s+.*(/|\\)(etc|proc|sys|dev)\b",
+                    @"(^|[;&|]\s*)chmod\s+.*(/|\\)run(?!/csweet/workload/tools(?:/|[\s""']|$))\b",
+                    @"(^|[;&|]\s*)chmod\s+.*\.\.(?:/|\\)"
                 ],
                 allowList: null,
-                custom: null)
-        });
-    }
+                custom: null);
+
 }

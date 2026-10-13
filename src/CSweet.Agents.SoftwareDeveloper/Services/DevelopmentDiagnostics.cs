@@ -189,24 +189,102 @@ Development is blocked: {headline}
     {
         var failed = outcome.Validations.Where(x => !x.Succeeded || x.ExitCode != 0).ToList();
         if (failed.Count == 0 || !failed.All(IsMissingTool)) return null;
-        var tools = failed.Select(x => ToolName(x.Command)).Where(x => x.Length > 0)
-            .Distinct(StringComparer.Ordinal).Take(10).Select(x => $"`{x}`").ToList();
-        var checks = string.Join(Environment.NewLine, failed.Take(10).Select(x =>
-            $"- `{x.Command}` exited {x.ExitCode}: {SanitizeBlocker(x.DiagnosticExcerpt ?? "No diagnostic excerpt.")}"));
-        return $"Decision needed on {itemIdentifier}: my development environment doesn't have {string.Join(", ", tools)} installed, " +
-            $"so the ticket's checks can't run and no code change can make them pass.{Environment.NewLine}{checks}{Environment.NewLine}{Environment.NewLine}" +
-            "Options: provide the toolchain in the agent runtime (install it in the runtime image and certify it), " +
-            "or amend the ticket so its validation doesn't need it. Retry the ticket once either is done.";
+        return $"Decision needed on {BlockerExcerpt(itemIdentifier, 160)}: {ValidationExplanation(failed)}" +
+            $"{Environment.NewLine}{Environment.NewLine}" +
+            "Please provide the missing tools in my development environment, or amend the ticket's validation requirements if appropriate. " +
+            "Retry the ticket once either is done." +
+            $"{Environment.NewLine}{Environment.NewLine}{ValidationTechnicalDetails(failed)}";
     }
+
+    internal static string FailureKind(SoftwareDevelopmentValidation validation) =>
+        FailureKind(validation, Environment.GetEnvironmentVariable("CSWEET_RUNTIME_NETWORK_MODE"));
+
+    internal static string FailureKind(SoftwareDevelopmentValidation validation, string? networkMode)
+    {
+        if (IsMissingTool(validation)) return "missing-runtime";
+        var detail = validation.DiagnosticExcerpt ?? string.Empty;
+        if (detail.Contains("network_destination_denied", StringComparison.OrdinalIgnoreCase)) return "destination-policy-denied";
+        if (detail.Contains("internet_permission_denied", StringComparison.OrdinalIgnoreCase)) return "internet-permission-denied";
+        var dns = new[] { "could not resolve host", "name resolution", "network_dns_failed", "ENOTFOUND", "EAI_AGAIN", "Name or service not known" }
+            .Any(x => detail.Contains(x, StringComparison.OrdinalIgnoreCase));
+        var transport = new[] { "network_transport_failed", "network is unreachable", "ENETUNREACH", "ETIMEDOUT", "ECONNRESET", "ECONNREFUSED", "Failed to connect" }
+            .Any(x => detail.Contains(x, StringComparison.OrdinalIgnoreCase));
+        if ((dns || transport) && (networkMode ?? Environment.GetEnvironmentVariable("CSWEET_RUNTIME_NETWORK_MODE")) == "restricted")
+            return "internet-permission-denied";
+        if (dns) return "network-dns-failed";
+        if (transport) return "network-transport-failed";
+        if (new[] { "E404", "ETARGET", "No matching distribution found", "NU1101" }
+            .Any(x => detail.Contains(x, StringComparison.OrdinalIgnoreCase))) return "package-unavailable";
+        return "application-validation-failed";
+    }
+
+    // Keep the owner's explanation independent of shell syntax and diagnostic output.
+    // A missing tool or a DNS error alone does not prove that installing it was attempted.
+    private static string MissingToolName(SoftwareDevelopmentValidation validation)
+    {
+        var detail = validation.DiagnosticExcerpt ?? string.Empty;
+        if (detail.Length > 1200) detail = detail[..1200];
+        var match = Regex.Match(detail,
+            @"(?<tool>[A-Za-z0-9_.+-]+):\s*command not found|['""](?<tool>[A-Za-z0-9_.+-]+)['""]\s+is not recognized",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(100));
+        return match.Success ? match.Groups["tool"].Value : ToolName(validation.Command);
+    }
+
+    private static string ValidationExplanation(IReadOnlyList<SoftwareDevelopmentValidation> failed)
+    {
+        var sentences = new List<string>();
+        var tools = failed.Where(IsMissingTool).Select(MissingToolName).Distinct(StringComparer.Ordinal)
+            .Take(10).Select(x => x switch
+            {
+                "node" => "Node.js",
+                "npm" => "npm",
+                "npx" => "npx",
+                _ => BlockerExcerpt(x, 80)
+            }).ToArray();
+        if (tools.Length > 0)
+            sentences.Add($"My development environment doesn't have {string.Join(", ", tools)} installed, so I can't run the checks that need {(tools.Length == 1 ? "it" : "them")}.");
+        var kinds = failed.Select(FailureKind).ToHashSet(StringComparer.Ordinal);
+        if (kinds.Contains("internet-permission-denied"))
+            sentences.Add("I don't have permission to access the internet from this environment, so I can't complete the steps that need it.");
+        if (kinds.Contains("destination-policy-denied"))
+            sentences.Add("Access to a required online service was denied, so I can't complete the steps that need it.");
+        if (kinds.Contains("network-dns-failed"))
+            sentences.Add("I couldn't reach a required online service because its address couldn't be resolved.");
+        if (kinds.Contains("network-transport-failed"))
+            sentences.Add("I couldn't connect to a required online service.");
+        if (kinds.Contains("package-unavailable"))
+            sentences.Add("The package service couldn't supply a requested package or version.");
+        if (kinds.Contains("application-validation-failed"))
+            sentences.Add("A required check failed, so I couldn't verify that this work is ready.");
+        return sentences.Count > 0 ? string.Join(" ", sentences) : "I couldn't verify that this work is ready.";
+    }
+
+    private static string ValidationNextStep(IReadOnlyList<SoftwareDevelopmentValidation> failed)
+    {
+        var steps = new List<string>();
+        var kinds = failed.Select(FailureKind).ToHashSet(StringComparer.Ordinal);
+        if (kinds.Contains("missing-runtime")) steps.Add("provide the missing tools in my development environment");
+        if (kinds.Contains("internet-permission-denied") || kinds.Contains("destination-policy-denied"))
+            steps.Add("review the required online access permissions");
+        if (kinds.Contains("network-dns-failed") || kinds.Contains("network-transport-failed"))
+            steps.Add("restore access to the required online service");
+        if (kinds.Contains("package-unavailable")) steps.Add("check the requested package and version");
+        if (kinds.Contains("application-validation-failed") || steps.Count == 0)
+            steps.Add("review the failing checks in the technical details and correct the cause");
+        return $"Please {string.Join(" and ", steps)}. Then retry the ticket so I can run the checks again.";
+    }
+
+    private static string ValidationTechnicalDetails(IEnumerable<SoftwareDevelopmentValidation> failed) =>
+        "### Technical details" + Environment.NewLine + Environment.NewLine +
+        string.Join(Environment.NewLine, failed.Take(20).Select(x =>
+            $"- [{FailureKind(x)}] {BlockerExcerpt(x.Command, 300)} exited {x.ExitCode}: {BlockerExcerpt(x.DiagnosticExcerpt ?? "No diagnostic excerpt.", 600)}"));
 
     internal static string FailedValidationSummary(SoftwareDevelopmentOutcome outcome)
     {
-        var failures = outcome.Validations
-            .Where(x => !x.Succeeded || x.ExitCode != 0)
-            .Take(20)
-            .Select(x =>
-                $"- `{x.Command}` exited {x.ExitCode}: {SanitizeBlocker(x.DiagnosticExcerpt ?? "No diagnostic excerpt.")}");
-        return $"Implementation remains In Progress because validation failed:{Environment.NewLine}{string.Join(Environment.NewLine, failures)}";
+        var failed = outcome.Validations.Where(x => !x.Succeeded || x.ExitCode != 0).ToList();
+        return ValidationExplanation(failed) +
+            $"{Environment.NewLine}{Environment.NewLine}{ValidationNextStep(failed)}" +
+            $"{Environment.NewLine}{Environment.NewLine}{ValidationTechnicalDetails(failed)}";
     }
 
     internal static string SanitizeBlocker(string value)

@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.16.1
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.17.1
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.16.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `1.17.1`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -465,3 +465,17 @@ Current compute review links are local to the provider machine. Public hosting r
 ## Delegation and tracking
 
 SDK 3.65.0 dispatches authenticated delegation before specialist conversation fallback. The manifest requests delegation, work tracking, directory and conversation reads, personal commitments and model interpretation. These declarations require reviewed grants; existing resource permissions and approval rules still apply. The shared SDK owns coordinator reporting and wake recovery.
+
+## Runtime internet and dependencies
+
+The package requests `runtime.internet.public.v1` during normal permission review. Approval supplies public outbound TCP/UDP in the agent VM; declined permission retains restricted operation. The development image supplies Node/npm. Agents may restore project dependencies, generate missing lockfiles, and install portable tools beneath `/run/csweet/workload/tools`; administrator/system installation remains unavailable. Deploy a certified Office development guest before retrying tasks blocked by missing Node or registry access.
+
+## Blocker reports
+
+Validation reports begin with a plain-language cause and the help needed to continue. Failed commands,
+exit codes, and sanitized diagnostic excerpts follow under Technical details. A connection failure does
+not imply denied internet permission or an attempted installation.
+
+See `DevelopmentDiagnostics.FailedValidationSummary` and `MissingToolDecision` for ticket reports,
+`DevelopmentDelivery.DevelopmentBlockerChatMessage` for chat summaries, and
+`AssignedDevelopmentService.BuildAssignmentPrompt` for model reporting guidance.

@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "1.16.1",
+  "version": "1.17.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -1350,6 +1350,12 @@
       "name": "platform.organization.snapshot.read.v1",
       "scope": "organization",
       "purpose": "Use shared SDK delegation, authenticated recipient resolution, canonical work and durable reporting within existing resource authority.",
+      "modelVisible": false
+    },
+    {
+      "name": "runtime.internet.public.v1",
+      "scope": "organization",
+      "purpose": "Allow package restores and installation of project dependencies and portable development tools inside this isolated runtime.",
       "modelVisible": false
     }
   ],

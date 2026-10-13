@@ -19,8 +19,8 @@ public class MissingToolDecisionTests
 
         Assert.NotNull(decision);
         Assert.StartsWith("Decision needed on VGF943299B17-6:", decision);
-        Assert.Contains("`node`, `npx`", decision);
-        Assert.Contains("`node -v` exited 127", decision);
+        Assert.Contains("Node.js, npx", decision);
+        Assert.Contains("node -v exited 127", decision);
         Assert.Contains("amend the ticket", decision);
     }
 

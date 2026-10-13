@@ -160,8 +160,9 @@ public sealed partial class ComputeDeploymentRecoveryTests
             {
                 var blocker = Assert.Single(f.Sent);
                 Assert.Contains("checks still failed", blocker);
-                Assert.Contains("fixture-test", blocker);
-                Assert.Contains("assertion failed", blocker);
+                Assert.Contains("A required check failed", blocker);
+                Assert.DoesNotContain("fixture-test", blocker);
+                Assert.DoesNotContain("assertion failed", blocker);
                 Assert.Contains("move it to To Do", blocker);
             }
             else Assert.Empty(f.Sent);

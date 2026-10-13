@@ -6,7 +6,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-developer` and version `1.16.0` synchronized between agent code,
+- Keep `com.csweet.software-developer` and version `1.17.1` synchronized between agent code,
   `csweet-plugin.json`, tests, and releases.
 - The root manifest is the reviewed authority request. Keep `provides`, `requires`, events,
   configuration, credentials, web access, and UI contributions synchronized with implementation
@@ -29,7 +29,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
   `LocalShellExecutor` only with `ConfineWorkingDirectory = true` and the unattended deny policy.
   Keep file memory, hosted web search, filesystem skill discovery, background agents, and broad
   automatic tool approval disabled.
-- The container, egress gateway, repository connection grant, and scoped credential are the
+- The certified VM, Office public-internet relay, repository connection grant, and brokered credential are the
   security boundary. Never request or expose credential values to the model.
 - Do not add merge, release, deployment, secret, access-control, repository-deletion, or history
   rewrite authority to `software-development.implement.v1`.
