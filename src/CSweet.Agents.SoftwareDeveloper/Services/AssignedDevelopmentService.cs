@@ -20,8 +20,8 @@ internal sealed partial class AssignedDevelopmentService(
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
     {
-        WorkExecutionAssignmentV1? assignment;
-        try { assignment = request.Arguments.Deserialize<WorkExecutionAssignmentV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
+        WorkExecutionAssignment? assignment;
+        try { assignment = request.Arguments.Deserialize<WorkExecutionAssignment>(new JsonSerializerOptions(JsonSerializerDefaults.Web)); }
         catch (JsonException) { return AgentWorkResult.Failure("The orchestration assignment is invalid JSON."); }
         if (assignment is null || assignment.AttemptId == Guid.Empty || assignment.StageExecutionId == Guid.Empty)
             return AgentWorkResult.Failure("The orchestration assignment is incomplete.");
@@ -29,7 +29,7 @@ internal sealed partial class AssignedDevelopmentService(
         {
             var successCode = SuccessfulOutcomeCode(assignment.Input);
             var item = await context.Platform.Work.ReadItemAsync(
-                new WorkItemReference(assignment.BoardId, assignment.ItemId), cancellationToken);
+                new WorkItemReference(assignment.BoardId, assignment.TaskItemId), cancellationToken);
             if (item.Delivery?.DeliveryKind == "Artifact")
                 return await ArtifactTaskDelivery.ExecuteAsync(assignment, item, context,
                     await _chatClients.CreateAsync(context, cancellationToken), cancellationToken);
@@ -38,7 +38,7 @@ internal sealed partial class AssignedDevelopmentService(
             var output = await ExecuteAssignedTicketAsync(
                 assignment.AttemptId, assignment.AssignmentRevision,
                 assignment.BoardId, item, ReadDependencyPlans(assignment, item), ReadReviewFeedback(assignment),
-                assignment.PriorOutcomes, assignment.ItemIdentifier ?? item.Title, ManagerDirections(assignment), assignment.StageExecutionId, context, cancellationToken);
+                assignment.PriorOutcomes, assignment.Identifier ?? item.Title, ManagerDirections(assignment), assignment.StageExecutionId, context, cancellationToken);
             var evidence = new List<WorkExecutionEvidence>
             {
                 new("commit", "Source commit", output.CommitSha)
@@ -413,7 +413,7 @@ Pull request: {publication.PullRequestUrl}
 """;
 
     private static async Task TryRequestArchitectureSupportAsync(
-        WorkExecutionAssignmentV1 assignment,
+        WorkExecutionAssignment assignment,
         Exception exception,
         AgentRuntimeContext context,
         CancellationToken cancellationToken)
@@ -440,8 +440,8 @@ Pull request: {publication.PullRequestUrl}
                 assignment.AssignmentRevision);
             await context.Platform.Communication.StartWorkItemCoordinationAsync(
                 new StartWorkItemCoordinationRequest(
-                    architectUserId, assignment.BoardId, assignment.ItemId,
-                    assignment.SprintExecutionId, assignment.StageExecutionId,
+                    architectUserId, assignment.BoardId, assignment.TaskItemId,
+                    assignment.TaskSprintExecutionId, assignment.StageExecutionId,
                     assignment.AssignmentRevision, "Developer technical blocker",
                     "Return bounded design-conforming guidance for the exact blocked assignment.",
                     ["Guidance preserves approved scope and architecture.", "Verification is explicit."],
@@ -449,7 +449,7 @@ Pull request: {publication.PullRequestUrl}
                     $"developer-support:{assignment.StageExecutionId:N}:{assignment.Attempt}",
                     new AgentCoordinationArtifactSubmission(
                         ArchitectureSupportArtifactTypes.SupportRequest, "1.0",
-                        $"support:{assignment.ItemId:N}:{assignment.StageExecutionId:N}:{assignment.AssignmentRevision}",
+                        $"support:{assignment.TaskItemId:N}:{assignment.StageExecutionId:N}:{assignment.AssignmentRevision}",
                         0, true, JsonSerializer.SerializeToElement(support))), cancellationToken);
         }
         catch (PlatformCapabilityException)
@@ -468,7 +468,7 @@ Pull request: {publication.PullRequestUrl}
         roles.Any(x => x?.Contains("Technical Director", StringComparison.OrdinalIgnoreCase) == true) ? 1 : 0;
 
     /// <summary>The manager's retry directions for this exact stage, supplied by the platform as assignment evidence.</summary>
-    internal static IReadOnlyList<string> ManagerDirections(WorkExecutionAssignmentV1 assignment) =>
+    internal static IReadOnlyList<string> ManagerDirections(WorkExecutionAssignment assignment) =>
         (assignment.Evidence ?? []).Where(x => x.Kind == "manager-direction" && !string.IsNullOrWhiteSpace(x.Value))
             .TakeLast(3).Select(x => x.Value.Length <= 1000 ? x.Value : x.Value[..1000]).ToArray();
 

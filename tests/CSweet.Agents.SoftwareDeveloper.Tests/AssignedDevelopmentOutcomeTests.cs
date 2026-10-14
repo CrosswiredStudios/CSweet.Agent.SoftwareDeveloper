@@ -25,8 +25,9 @@ public sealed class AssignedDevelopmentOutcomeTests
     [InlineData("{\"allowedOutcomeCodes\":[17]}")]
     public async Task UnsupportedPolicyBlocksBeforeReadingOrPublishingWork(string input)
     {
-        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignmentV1>("{}")! with
+        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignment>("{}")! with
         {
+            Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(),
             StageExecutionId = Guid.NewGuid(), AttemptId = Guid.NewGuid(),
             Input = JsonSerializer.Deserialize<JsonElement>(input), Item = JsonSerializer.SerializeToElement(new {}),
             Evidence = [], PriorOutcomes = []
@@ -34,7 +35,7 @@ public sealed class AssignedDevelopmentOutcomeTests
         var settings = new AgentSettings(new Dictionary<string,JsonElement>());
         var service = new AssignedDevelopmentService(settings, new DevelopmentChatClientProvider(settings, null), NullLogger.Instance);
         // No platform capabilities are registered: an accidental side effect would fail the expected blocker assertion.
-        var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRunV1,
+        var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRun,
             JsonSerializer.SerializeToElement(assignment, new JsonSerializerOptions(JsonSerializerDefaults.Web))),
             new AgentTestRuntime().CreateContext(), CancellationToken.None);
         Assert.True(result.Succeeded);

@@ -7,7 +7,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal sealed partial class AssignedDevelopmentService
 {
-    internal static IReadOnlyList<DependencyPlan> ReadDependencyPlans(WorkExecutionAssignmentV1 assignment, WorkItem item)
+    internal static IReadOnlyList<DependencyPlan> ReadDependencyPlans(WorkExecutionAssignment assignment, WorkItem item)
     {
         var references = (assignment.Evidence ?? []).Where(x => x.Kind == "dependency-document.v1").ToArray();
         if (references.Length > 16) throw new OperationalDevelopmentException("Too many dependency documents in the assignment.");

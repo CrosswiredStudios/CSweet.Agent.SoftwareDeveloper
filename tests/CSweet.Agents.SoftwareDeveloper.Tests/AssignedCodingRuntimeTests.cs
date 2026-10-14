@@ -19,8 +19,9 @@ public sealed class AssignedCodingRuntimeTests
             Id = itemId, Title = "Implement foundation", Description = "Approved engineering work",
             Development = new(Guid.NewGuid(), "linux", ["Implement foundation"], ["Tests pass"])
         };
-        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignmentV1>("{}")! with
+        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignment>("{}")! with
         {
+            Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(),
             StageExecutionId = Guid.NewGuid(), AttemptId = Guid.NewGuid(), BoardId = boardId, ItemId = itemId,
             AssignmentRevision = 1, Evidence = [], PriorOutcomes = [], Item = JsonSerializer.SerializeToElement(new {}),
             Input = JsonSerializer.SerializeToElement(new { allowedOutcomeCodes = new[] { "code-published", "blocked" } })
@@ -45,7 +46,7 @@ public sealed class AssignedCodingRuntimeTests
         try
         {
             var service = new AssignedDevelopmentService(settings, new DevelopmentChatClientProvider(settings, factory), NullLogger.Instance);
-            var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRunV1,
+            var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRun,
                 JsonSerializer.SerializeToElement(assignment, new JsonSerializerOptions(JsonSerializerDefaults.Web))), runtime.CreateContext(), default);
             Assert.True(factory.Called);
             var outcome = result.Value!.Value.Deserialize<WorkExecutionOutcomeV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;

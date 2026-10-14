@@ -10,8 +10,9 @@ public sealed class ReviewFeedbackTests
         WorkExecutionDispositions.Completed, code, "Fix the proposed implementation", JsonSerializer.SerializeToElement(new
         { candidateCommitSha = Sha, findings = new[] { "Reproduce and correct the import failure." } }),
         [new("commit", "Reviewed source", Sha)], []);
-    private static WorkExecutionAssignmentV1 Assignment(params WorkExecutionOutcomeV1[] outcomes) =>
-        JsonSerializer.Deserialize<WorkExecutionAssignmentV1>("{}")! with { PriorOutcomes = outcomes };
+    private static WorkExecutionAssignment Assignment(params WorkExecutionOutcomeV1[] outcomes) =>
+        JsonSerializer.Deserialize<WorkExecutionAssignment>("{}")! with {
+            Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(), PriorOutcomes = outcomes };
 
     [Theory]
     [InlineData("rejected")]

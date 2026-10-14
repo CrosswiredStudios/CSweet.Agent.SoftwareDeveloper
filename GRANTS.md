@@ -8,7 +8,7 @@ same-organization binding.
 |---|---|---|---|
 | `platform.llm.chat-stream.v1` | Organization | Run the Microsoft Agent Framework harness with the selected approved model | Model inference only; no provider credential is exposed |
 | `platform.team-roster.read.v1` | Team | Read only this developer employee's approved teammates and team-specific roles | No chat, board, tool, memory, installation, credential, or agent-to-agent authority |
-| `work.execution.run.v1` | Orchestration attempt | Execute the exact assigned Development stage | Return a structured outcome; never transition the card |
+| `work.execution.run` | Orchestration attempt | Execute the exact assigned Development stage | Return a structured outcome; never transition the card |
 | `work.item.read` | Work item | Verify the authoritative assignment and brief | Read only the assigned ticket |
 | `work.item.comment` | Work item | Attach evidence or a sanitized blocker | Bounded ticket comment |
 | `work.item.comments.read` | Work item | Consume platform-linked Architect guidance on the next attempt | Read-only correlated comments |

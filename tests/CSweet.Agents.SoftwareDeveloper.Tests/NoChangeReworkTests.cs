@@ -116,8 +116,9 @@ public sealed class NoChangeReworkTests
     [Fact]
     public void Manager_retry_directions_reach_the_coding_prompt()
     {
-        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignmentV1>("{}")! with
+        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignment>("{}")! with
         {
+            Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(),
             Evidence = [new("manager-direction", "Manager retry direction", "Finding R1.1 is resolved; resubmit."),
                 new("commit", "Source", Sha)]
         };

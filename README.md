@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v1.17.1
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,13 +36,13 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `1.17.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.0.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
 
 **Software Developer @ C-Sweet** — Individual contributor (`individual-contributor.v1`), project-bound (`requiresProject: true`)
-- Execute one pinned board stage per callback via `work.execution.run.v1`; return structured outcome, never transition the card.
+- Execute one pinned board stage per callback via `work.execution.run`; return structured outcome, never transition the card.
 - Implement approved changes via `software-development.implement.v1` in a granted workspace; publish deterministic `csweet/{workItemId}-{slug}` branch + GitHub PR with evidence.
 - Plan and deliver solo MVPs: 2–8 stories, 2–8 tasks per story, branch-per-task, Testing → QA → governed merge.
 - Recover durably: checkpoint planning drafts, upload workspace snapshots, resume after restart without replaying commands.
@@ -150,7 +150,7 @@ The optional `computeWorkstreamId` and `computeTemplateId` fields are retained f
 
 The manifest provides `agent.configuration.describe.v1`,
 `agent.configuration.update.v1`, `software-development.implement.v1`, and
-`work.execution.run.v1`, plus a settings form contribution. C-Sweet owns every automated
+`work.execution.run`, plus a settings form contribution. C-Sweet owns every automated
 stage transition; the agent returns only a structured outcome and evidence.
 
 ## Required grants
@@ -415,7 +415,7 @@ Assigned engineering stages implement and validate code in the authorized snapsh
 
 ## Review-driven rework (1.12.4)
 
-Assigned coding consumes completed technical-review and QA rejection results from `WorkExecutionAssignmentV1.PriorOutcomes`, with exact commit evidence and bounded findings. The model must compare each finding with the current source and either fix it or provide evidence for a resolved/disputed finding. Prior findings do not waive acceptance criteria. A new attempt removes only its local previous `.csweet/outcome.json` before model execution and requires fresh validation evidence; source edits remain retained.
+Assigned coding consumes completed technical-review and QA rejection results from `WorkExecutionAssignment.PriorOutcomes`, with exact commit evidence and bounded findings. The model must compare each finding with the current source and either fix it or provide evidence for a resolved/disputed finding. Prior findings do not waive acceptance criteria. A new attempt removes only its local previous `.csweet/outcome.json` before model execution and requires fresh validation evidence; source edits remain retained.
 
 ## Rework that needs no code change (1.13.0)
 
@@ -479,3 +479,7 @@ not imply denied internet permission or an attempted installation.
 See `DevelopmentDiagnostics.FailedValidationSummary` and `MissingToolDecision` for ticket reports,
 `DevelopmentDelivery.DevelopmentBlockerChatMessage` for chat summaries, and
 `AssignedDevelopmentService.BuildAssignmentPrompt` for model reporting guidance.
+
+## Execution contract (2.0.0)
+
+Execution uses one `work.execution.run` capability and `WorkExecutionAssignment` from SDK/WorkManagement.Contracts 4.0.0. Task and aggregate scopes retain their distinct authority checks within that envelope. Upgrade the platform and executing agents together; no legacy execution adapter remains.

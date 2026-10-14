@@ -18,7 +18,7 @@ public sealed class ManifestTests
         Assert.Equal(agent.AgentId, manifest.Id);
         Assert.Equal(agent.Version, manifest.Version);
         Assert.Contains(SoftwareDeveloperProfile.PrimaryCapability, manifest.Capabilities);
-        Assert.Contains(WorkManagementCapabilityNames.ExecutionRunV1, manifest.Capabilities);
+        Assert.Contains(WorkManagementCapabilityNames.ExecutionRun, manifest.Capabilities);
         Assert.Contains(DeliveryBuildReadiness.ExecutionCapability, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Describe, manifest.Capabilities);
         Assert.Contains(AgentConfigurationCapabilities.Update, manifest.Capabilities);

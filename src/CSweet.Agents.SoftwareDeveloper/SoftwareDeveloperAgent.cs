@@ -88,7 +88,7 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
         AgentCapabilityRequest request, AgentRuntimeContext context, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (string.Equals(request.Capability, WorkManagementCapabilityNames.ExecutionRunV1, StringComparison.Ordinal))
+        if (string.Equals(request.Capability, WorkManagementCapabilityNames.ExecutionRun, StringComparison.Ordinal))
             return new AssignedDevelopmentService(
                 Settings, new DevelopmentChatClientProvider(Settings, _llmClientFactory), _logger)
                 .ExecuteAsync(request, context, cancellationToken);

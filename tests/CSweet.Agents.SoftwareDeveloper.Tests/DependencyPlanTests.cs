@@ -23,8 +23,9 @@ public sealed class DependencyPlanTests
         if (condition == "missing-revision") plan = plan with { RevisionId = Guid.Empty };
         var evidence = new WorkExecutionEvidence("dependency-document.v1", "Plan", JsonSerializer.Serialize(plan,
             new JsonSerializerOptions(JsonSerializerDefaults.Web)), "application/json");
-        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignmentV1>("{}")! with
-            { Evidence = condition == "duplicate" ? [evidence, evidence] : [evidence] };
+        var assignment = JsonSerializer.Deserialize<WorkExecutionAssignment>("{}")! with
+            {
+            Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(), Evidence = condition == "duplicate" ? [evidence, evidence] : [evidence] };
         var item = JsonSerializer.Deserialize<WorkItem>("{}")! with
         {
             Id = Guid.NewGuid(), Title = "Implement physics", Description = "Implement approved physics",

@@ -6,7 +6,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal sealed partial class AssignedDevelopmentService
 {
-    internal static IReadOnlyList<ReviewFeedback> ReadReviewFeedback(WorkExecutionAssignmentV1 assignment)
+    internal static IReadOnlyList<ReviewFeedback> ReadReviewFeedback(WorkExecutionAssignment assignment)
     {
         var outcomes = (assignment.PriorOutcomes ?? []).Where(x =>
             x.Disposition == WorkExecutionDispositions.Completed &&
