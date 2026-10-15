@@ -331,6 +331,8 @@ internal sealed partial class AssignedDevelopmentService(
         return $$"""
 Implement the assigned ticket in the current workspace.
 
+{{RepositorySourcePolicy.Instructions}}
+
 Read repository guidance first. Inspect before editing. Use the confined shell for restore, build,
 test, formatting, and static analysis. The snapshot has no Git metadata. Do not access remotes or credentials.
 Run focused validation and then the broadest relevant validation that fits the assignment.
