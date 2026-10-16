@@ -6,7 +6,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-developer` and version `2.0.1` synchronized between agent code,
+- Keep `com.csweet.software-developer` and version `2.0.2` synchronized between agent code,
   `csweet-plugin.json`, tests, and releases.
 - The root manifest is the reviewed authority request. Keep `provides`, `requires`, events,
   configuration, credentials, web access, and UI contributions synchronized with implementation
@@ -35,6 +35,12 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
   rewrite authority to `software-development.implement.v1`.
 
 ## Verification
+
+Core execution behavior must stay aligned with Adrian in `../CSweet.Agent.Engineer.VideoGame`.
+Mirror core fixes and their regression tests in both agents; retain distinct role profiles and versions.
+When working in the sibling C-Sweet checkout, also run
+`../csweet/scripts/Test-DeveloperAgentCoreParity.ps1`. This contributor check requires both
+agent checkouts; it does not add sibling dependencies to standalone builds.
 
 Run from the repository root:
 

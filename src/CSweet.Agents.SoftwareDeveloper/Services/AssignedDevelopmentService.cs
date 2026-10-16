@@ -165,14 +165,17 @@ internal sealed partial class AssignedDevelopmentService(
             SoftwareDeveloperHarness.DefaultOutputTokens);
         using var chatClient = await _chatClients.CreateAsync(context, cancellationToken);
         await using var shell = SoftwareDeveloperHarness.CreateShell(workspacePath);
-        AIAgent harness = chatClient.AsHarnessAgent(discussion.Attach(await CalendarHarness.ConfigureAsync(context,
-            SoftwareDeveloperHarness.CreateOptions(
+        var progress = new WorkspaceProgress(item.Id, context.ReportProgressAsync, _logger);
+        var harnessOptions = SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,
                 shell,
                 _settings.GetString("customInstructions"),
                 maxContextWindowTokens,
-                maxOutputTokens), cancellationToken)));
+                maxOutputTokens);
+        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell)];
+        AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(discussion.Attach(
+            await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken))));
 
         await context.ReportProgressAsync(
             new { stage = "implementing", itemId = item.Id, workspace = workspace.WorkspaceId },
@@ -198,7 +201,8 @@ internal sealed partial class AssignedDevelopmentService(
         }
         if (discussion.Pending is { } pending) throw new TicketResponseRequiredException(pending);
 
-        var outcome = await ImplementationOutcomeReader.ReadAsync(workspacePath, cancellationToken);
+        var outcome = await ReadCheckpointedOutcomeAsync(workspacePath,
+            token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token), cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
         {
@@ -208,7 +212,7 @@ internal sealed partial class AssignedDevelopmentService(
             throw new InvalidOperationException(DevelopmentDiagnostics.FailedValidationSummary(outcome));
         }
 
-        var inspection = await UploadAndInspectAsync(workspace, assignmentRevision, context, cancellationToken);
+        var inspection = await context.Platform.Git.InspectAsync(new(workspace.WorkspaceId, assignmentRevision), cancellationToken);
         if (!inspection.HasChanges)
         {
             // An unchanged workspace is a legitimate answer to rework, not a crash. Respond the way a

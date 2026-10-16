@@ -4,6 +4,15 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 internal sealed partial class AssignedDevelopmentService
 {
+    internal static async Task<SoftwareDevelopmentOutcome> ReadCheckpointedOutcomeAsync(string workspacePath,
+        Func<CancellationToken, Task> checkpoint, CancellationToken token)
+    {
+        // Invalid reports and failed validations block publication, but must not discard final edits.
+        // Upload excludes .csweet metadata, so the next attempt cannot reuse a stale completion report.
+        await checkpoint(token);
+        return await ImplementationOutcomeReader.ReadAsync(workspacePath, token);
+    }
+
     internal static async Task<GitWorkspaceResult> PrepareWorkspaceAsync(Guid itemId, long revision, string key,
         AgentRuntimeContext context, CancellationToken token)
     {

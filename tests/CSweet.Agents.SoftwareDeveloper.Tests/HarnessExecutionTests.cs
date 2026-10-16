@@ -1,11 +1,39 @@
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class HarnessExecutionTests
 {
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"summary\":\"Build timed out\",\"changedFiles\":[\"app.txt\"],\"validations\":[{\"command\":\"npm run build\",\"succeeded\":false,\"exitCode\":124}]}")]
+    public async Task Final_edits_are_checkpointed_before_outcome_validation_can_block_work(string outcomeJson)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-final-checkpoint-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new ScriptedClient(false, outcomeJson: outcomeJson);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            string? durableSource = null;
+            await SoftwareDeveloperHarness.RunImplementationAsync(harness, session, "Implement the ticket.", root, default);
+            Task<SoftwareDevelopmentOutcome> ReadAsync() => AssignedDevelopmentService.ReadCheckpointedOutcomeAsync(root,
+                async token => durableSource = await File.ReadAllTextAsync(Path.Combine(root, "app.txt"), token), default);
+            if (outcomeJson == "{}")
+                await Assert.ThrowsAsync<ImplementationOutcomeException>(ReadAsync);
+            else
+                Assert.False(Assert.Single((await ReadAsync()).Validations).Succeeded);
+            Assert.Equal("implemented", durableSource);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task DiscussionWaitCheckpointsAndStopsWithoutDemandingAnOutcome()
     {
@@ -39,13 +67,22 @@ public sealed class HarnessExecutionTests
         {
             using var client = new ScriptedClient(stopEarly, reasoningToolHint: reasoningToolHint);
             await using var shell = SoftwareDeveloperHarness.CreateShell(root);
-            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var itemId = Guid.NewGuid();
+            var reports = new List<JsonElement>();
+            var progress = new WorkspaceProgress(itemId, (value, _) =>
+            { reports.Add(JsonSerializer.SerializeToElement(value)); return Task.CompletedTask; }, NullLogger.Instance);
+            var harness = progress.Attach(client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null)));
             var session = await harness.CreateSessionAsync();
             await SoftwareDeveloperHarness.RunImplementationAsync(harness, session, "Implement the ticket.", root, default);
             Assert.Equal("implemented", await File.ReadAllTextAsync(Path.Combine(root, "app.txt")));
             Assert.Equal("{}", await File.ReadAllTextAsync(Path.Combine(root, ".csweet", "outcome.json")));
             Assert.Equal(3, client.Results);
             Assert.Equal(stopEarly ? 5 : 4, client.Calls);
+            Assert.Equal(6, reports.Count);
+            Assert.All(reports, report => Assert.Equal(itemId, report.GetProperty("itemId").GetGuid()));
+            Assert.Contains(reports, report => report.GetProperty("message").GetString()!.Contains("Write file returned"));
+            Assert.DoesNotContain("implemented", JsonSerializer.Serialize(reports));
+            Assert.DoesNotContain("app.txt", JsonSerializer.Serialize(reports));
         }
         finally { Directory.Delete(root, true); }
     }
@@ -233,7 +270,8 @@ public sealed class HarnessExecutionTests
         bool contextLimitOnce = false,
         bool transportFailureOnce = false,
         string? malformedToolCall = null,
-        bool reasoningToolHint = false) : IChatClient
+        bool reasoningToolHint = false,
+        string outcomeJson = "{}") : IChatClient
     {
         public int Calls, Results;
         public void Dispose() { }
@@ -273,7 +311,7 @@ public sealed class HarnessExecutionTests
 
                 var args = step == 1 ? new Dictionary<string, object?> { ["directory"] = "" } :
                     new Dictionary<string, object?> { ["fileName"] = step == 2 ? "app.txt" : ".csweet/outcome.json",
-                        ["content"] = step == 2 ? "implemented" : "{}", ["overwrite"] = true };
+                        ["content"] = step == 2 ? "implemented" : outcomeJson, ["overwrite"] = true };
                 var contents = new List<AIContent>();
                 if (reasoningToolHint) contents.Add(new TextReasoningContent("<tool_call|>"));
                 contents.Add(new FunctionCallContent("call-" + step, name, args));

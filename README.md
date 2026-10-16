@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.1
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.2
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.0.1`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.0.2`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -471,6 +471,17 @@ SDK 3.65.0 dispatches authenticated delegation before specialist conversation fa
 The package requests `runtime.internet.public.v1` during normal permission review. Approval supplies public outbound TCP/UDP in the agent VM; declined permission retains restricted operation. The development image supplies Node/npm. Agents may restore project dependencies, generate missing lockfiles, and install portable tools beneath `/run/csweet/workload/tools`; administrator/system installation remains unavailable. Deploy a certified Office development guest before retrying tasks blocked by missing Node or registry access.
 
 ## Blocker reports
+
+Version 2.0.2 matches Video Game Engineer 4.0.3 assigned-work progress and checkpoint behavior.
+`WorkspaceProgress` reports bounded file-tool activity, command start/exit status, and repeated-command
+counts without exposing source, paths, command arguments, or shell output. `AssignedDevelopmentService.ReadCheckpointedOutcomeAsync`
+saves final edits before validating the completion report, retaining work even when checks fail.
+Load the matching C-Sweet activity UI/host update and upgrade the installed agent to activate this;
+already running agents keep their existing code. Preserve/checkpoint active work before replacing a runtime.
+
+Core changes must be mirrored in both agents. The sibling C-Sweet contributor check
+`scripts/Test-DeveloperAgentCoreParity.ps1` compares execution source and harness/progress regression
+tests while allowing distinct identities and role profiles. Each agent remains independently buildable.
 
 Validation reports begin with a plain-language cause and the help needed to continue. Failed commands,
 exit codes, and sanitized diagnostic excerpts follow under Technical details. A connection failure does
