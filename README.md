@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.5
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.6
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.0.5`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.0.6`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -472,7 +472,7 @@ The package requests `runtime.internet.public.v1` during normal permission revie
 
 ## Blocker reports
 
-Version 2.0.5 matches Video Game Engineer 4.0.5 assigned-work progress, checkpoints and comment-based task revisions.
+Version 2.0.6 matches Video Game Engineer 4.0.7 assigned-work progress, checkpoints and comment-based task revisions.
 `WorkspaceProgress` reports bounded file-tool activity, command start/exit status, and repeated-command
 counts without exposing source, paths, command arguments, or shell output. `AssignedDevelopmentService.ReadCheckpointedOutcomeAsync`
 saves final edits before validating the completion report, retaining work even when checks fail.
@@ -499,7 +499,7 @@ Uses SDK 4.4.1 bounded exact-publication task technical review and repository so
 
 ## Runtime interruption and preservation
 
-Version 2.0.5 uses SDK 4.4.1 heartbeat transport recovery. "WorkspaceCheckpoint" saves completed source edits and commands before more model/tool work. Checkpoint failure cancels coding. Cancellation and revoked authority still stop uploads; recovery restores the latest completed snapshot, so a hard crash during a tool can still lose that tool's unfinished changes. Assigned and personal development use the same mechanism. These changes require upgrading the installed agent and matching host; existing runtimes retain their loaded code.
+Version 2.0.6 uses SDK 4.4.1 heartbeat transport recovery. "WorkspaceCheckpoint" saves completed source edits and commands before more model/tool work. Checkpoint failure cancels coding. Cancellation and revoked authority still stop uploads; recovery restores the latest completed snapshot, so a hard crash during a tool can still lose that tool's unfinished changes. Assigned and personal development use the same mechanism. These changes require upgrading the installed agent and matching host; existing runtimes retain their loaded code.
 
 ## Small tasks and comment revisions
 

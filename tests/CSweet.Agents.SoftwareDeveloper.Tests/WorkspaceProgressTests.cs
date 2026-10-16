@@ -36,16 +36,25 @@ public sealed class WorkspaceProgressTests
             { reports.Add(JsonSerializer.SerializeToElement(value)); return Task.CompletedTask; }, NullLogger.Instance);
             await using var shell = SoftwareDeveloperHarness.CreateShell(root);
             var tool = progress.ShellTool(shell);
-            var command = OperatingSystem.IsWindows() ? "cmd /c exit 1" : "exit 1";
+            const string commandMarker = "private-command-marker";
+            const string outputMarker = "private-output-marker";
+            var command = OperatingSystem.IsWindows()
+                ? $"Write-Output '{outputMarker}'; exit 1 # {commandMarker}"
+                : $"printf '%s\\n' '{outputMarker}'; exit 1 # {commandMarker}";
             var args = new AIFunctionArguments(new Dictionary<string, object?> { ["command"] = command });
+            var result = await tool.InvokeAsync(args);
             await tool.InvokeAsync(args);
-            await tool.InvokeAsync(args);
+            Assert.Contains(outputMarker, Assert.IsType<JsonElement>(result).GetString());
             Assert.Equal(4, reports.Count);
             Assert.Equal("started", reports[0].GetProperty("phase").GetString());
             Assert.Equal("failed", reports[1].GetProperty("phase").GetString());
             Assert.Equal(1, reports[1].GetProperty("exitCode").GetInt32());
             Assert.Equal(2, reports[3].GetProperty("repeated").GetInt32());
-            Assert.DoesNotContain(command, JsonSerializer.Serialize(reports));
+            // Exit-code status may contain "exit 1" without exposing the executed command.
+            var serialized = JsonSerializer.Serialize(reports);
+            Assert.DoesNotContain(command, serialized);
+            Assert.DoesNotContain(commandMarker, serialized);
+            Assert.DoesNotContain(outputMarker, serialized);
         }
         finally { Directory.Delete(root, true); }
     }
