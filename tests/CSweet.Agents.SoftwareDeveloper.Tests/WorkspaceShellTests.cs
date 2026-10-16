@@ -1,10 +1,34 @@
 using Microsoft.Agents.AI.Tools.Shell;
 using Microsoft.Extensions.AI;
+using Microsoft.Agents.AI;
+using System.Runtime.CompilerServices;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class WorkspaceShellTests
 {
+    [Fact]
+    public async Task Unconfirmed_shutdown_stops_model_continuation_and_keeps_only_the_previous_checkpoint()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-shell-checkpoint-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var inner = new StubShell(false);
+        try
+        {
+            await using var shell = new BoundedWorkspaceShell(inner, TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(30));
+            using var client = new CommandClient();
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Developer", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            var checkpoints = 0;
+            await Assert.ThrowsAsync<WorkspaceCommandTerminationException>(() => SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Implement", root, default, _ => { checkpoints++; return Task.CompletedTask; }, shell: shell));
+            Assert.Equal(2, client.Calls);
+            Assert.Equal(1, checkpoints); // File edit saved; no snapshot races the uncertain command.
+            Assert.Equal("saved", await File.ReadAllTextAsync(Path.Combine(root, "partial.txt")));
+        }
+        finally { inner.Complete(); Directory.Delete(root, true); }
+    }
+
     [Fact]
     public async Task Uncooperative_cleanup_is_bounded_stops_execution_and_cannot_be_reused()
     {
@@ -21,16 +45,15 @@ public sealed class WorkspaceShellTests
     }
 
     [Fact]
-    public async Task Confirmed_timeout_returns_failed_validation_and_next_command_can_run()
+    public async Task Timeout_stops_the_callback_and_requires_a_replacement_before_retry()
     {
         var inner = new StubShell(true);
         await using var shell = new BoundedWorkspaceShell(inner, TimeSpan.FromMilliseconds(30), TimeSpan.FromSeconds(1));
-        var result = await shell.RunAsync("timeout");
-        Assert.True(result.TimedOut);
-        Assert.Equal(124, result.ExitCode);
-        Assert.Contains("do not report", result.Stderr);
-        Assert.Null(shell.Failure);
-        Assert.Equal(0, (await shell.RunAsync("next")).ExitCode);
+        var error = await Assert.ThrowsAsync<WorkspaceCommandTimeoutException>(() => shell.RunAsync("timeout"));
+        Assert.Contains("do not claim", error.Message);
+        Assert.NotNull(shell.Failure);
+        await Assert.ThrowsAsync<WorkspaceCommandTimeoutException>(() => shell.RunAsync("next"));
+        Assert.Equal(1, inner.Calls);
     }
 
     [Fact]
@@ -43,7 +66,7 @@ public sealed class WorkspaceShellTests
     }
 
     [Fact]
-    public async Task Real_timeout_kills_nested_command_and_fresh_shell_remains_usable()
+    public async Task Real_timeout_bounds_nested_command_and_requests_runtime_replacement()
     {
         var root = Path.Combine(Path.GetTempPath(), "csweet-shell-timeout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -51,10 +74,8 @@ public sealed class WorkspaceShellTests
         {
             await using var shell = SoftwareDeveloperHarness.CreateShell(root, TimeSpan.FromSeconds(2));
             var command = OperatingSystem.IsWindows() ? "Start-Sleep -Seconds 30" : "sh -c 'sleep 30' | cat";
-            var result = await shell.RunAsync(command).WaitAsync(TimeSpan.FromSeconds(15));
-            Assert.True(result.TimedOut);
-            Assert.Equal(124, result.ExitCode);
-            Assert.Equal(0, (await shell.RunAsync("echo recovered")).ExitCode);
+            await Assert.ThrowsAsync<WorkspaceCommandTimeoutException>(() => shell.RunAsync(command).WaitAsync(TimeSpan.FromSeconds(15)));
+            Assert.NotNull(shell.Failure);
         }
         finally { Directory.Delete(root, true); }
     }
@@ -71,5 +92,24 @@ public sealed class WorkspaceShellTests
         }
         public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class CommandClient : IChatClient
+    {
+        public int Calls;
+        public void Dispose() { }
+        public object? GetService(Type serviceType, object? serviceKey = null) => null;
+        public async Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            await GetStreamingResponseAsync(messages, options, cancellationToken).ToChatResponseAsync(cancellationToken);
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            if (++Calls == 1)
+                yield return new(ChatRole.Assistant, [new FunctionCallContent("edit", "file_access_write", new Dictionary<string, object?> {
+                    ["fileName"] = "partial.txt", ["content"] = "saved", ["overwrite"] = true })]);
+            else
+                yield return new(ChatRole.Assistant, [new FunctionCallContent("command", "execute_workspace_command", new Dictionary<string, object?> { ["command"] = "test" })]);
+        }
     }
 }

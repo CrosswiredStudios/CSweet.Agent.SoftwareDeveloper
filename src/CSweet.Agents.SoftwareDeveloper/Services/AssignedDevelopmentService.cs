@@ -53,6 +53,10 @@ internal sealed partial class AssignedDevelopmentService(
                 evidence, []);
             return AgentWorkResult.Success(outcome);
         }
+        catch (WorkspaceCommandTimeoutException error)
+        {
+            return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
+        }
         catch (OperationCanceledException) { throw; }
         catch (TicketResponseRequiredException discussion)
         {

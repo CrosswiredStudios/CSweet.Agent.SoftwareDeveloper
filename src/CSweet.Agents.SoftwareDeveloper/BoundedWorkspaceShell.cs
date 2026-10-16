@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using Microsoft.Agents.AI.Tools.Shell;
 using Microsoft.Extensions.AI;
 
@@ -10,7 +9,7 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
 {
     internal static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
     private readonly TimeSpan _cleanupGrace = cleanupGrace ?? TimeSpan.FromSeconds(10);
-    internal WorkspaceCommandTerminationException? Failure { get; private set; }
+    internal WorkspaceCommandTimeoutException? Failure { get; private set; }
     internal Action? StopOnFailure { get; set; }
 
     public override async Task<ShellResult> RunAsync(string command, CancellationToken cancellationToken = default)
@@ -19,11 +18,12 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         cancellationToken.ThrowIfCancellationRequested();
         using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         commandCancellation.CancelAfter(timeout);
-        var elapsed = Stopwatch.StartNew();
         var execution = inner.RunAsync(command, commandCancellation.Token);
         try
         {
-            return await execution.WaitAsync(timeout, cancellationToken);
+            var result = await execution.WaitAsync(timeout, cancellationToken);
+            if (result.TimedOut) throw Stop(false);
+            return result;
         }
         catch (Exception error) when (error is TimeoutException or OperationCanceledException)
         {
@@ -32,18 +32,21 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
             catch (OperationCanceledException) { /* Expected after a confirmed cancelled command. */ }
             catch (TimeoutException)
             {
-                Failure = new WorkspaceCommandTerminationException();
                 // Observe a late fault without awaiting an unbounded cleanup path.
                 _ = execution.ContinueWith(t => _ = t.Exception, CancellationToken.None,
                     TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-                StopOnFailure?.Invoke();
-                throw Failure;
+                throw Stop(true);
             }
             cancellationToken.ThrowIfCancellationRequested();
-            return new ShellResult("", "workspace.command.timeout: The command exceeded its time limit and was cancelled. " +
-                "Inspect the last result and run each validation stage separately; do not report this command as passed.",
-                124, elapsed.Elapsed, false, true);
+            throw Stop(false);
         }
+    }
+
+    private WorkspaceCommandTimeoutException Stop(bool uncertain)
+    {
+        Failure = uncertain ? new WorkspaceCommandTerminationException() : new WorkspaceCommandTimeoutException();
+        StopOnFailure?.Invoke();
+        return Failure;
     }
 
     public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true)
@@ -63,7 +66,9 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
     }
 }
 
-internal sealed class WorkspaceCommandTerminationException() : Exception(
-    "workspace.command.termination_unconfirmed: The command exceeded its deadline and process cleanup did not finish within ten seconds. " +
-    "Coding stopped. The last completed workspace checkpoint is retained. Replace the isolated runtime before retrying; " +
-    "do not replay the command or claim validation passed.");
+internal class WorkspaceCommandTimeoutException(bool uncertain = false) : Exception(
+    "workspace.command.timeout: " + (uncertain ? "Process cleanup did not finish within ten seconds. " : "The command exceeded its time limit. ") +
+    "Coding stopped. The last completed workspace checkpoint is retained. C-Sweet must replace the isolated runtime before a bounded retry. " +
+    "Run validation stages separately; do not claim this command passed.");
+
+internal sealed class WorkspaceCommandTerminationException() : WorkspaceCommandTimeoutException(true);

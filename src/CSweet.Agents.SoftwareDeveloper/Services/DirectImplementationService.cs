@@ -57,6 +57,10 @@ internal sealed class DirectImplementationService(
         {
             // Compatibility for hosts predating durable assigned-compute state.
         }
+        catch (WorkspaceCommandTimeoutException error)
+        {
+            return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
+        }
         catch (PlatformCapabilityException exception)
         {
             _logger.LogWarning(exception, "Assigned compute gate rejected development capability {Capability}.", request.Capability);
