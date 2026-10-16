@@ -21,7 +21,13 @@ internal static class DevelopmentDiagnostics
         var heading = "What happened";
         var platform = error as PlatformCapabilityException;
 
-        if (error is ModelToolProtocolException)
+        if (error is WorkspaceCheckpointException)
+        {
+            headline = "The latest source edits could not be saved to the platform.";
+            explanation = "Coding stopped to avoid accumulating unsaved changes. Only the last completed checkpoint is confirmed recoverable; the latest local edits may still need recovery.";
+            next = "Restore workspace snapshot storage or connectivity and inspect the runtime before replacing it. Then retry from the retained checkpoint. This is a preservation failure, not a failing code test.";
+        }
+        else if (error is ModelToolProtocolException)
         {
             headline = "The selected model provider did not return executable tool calls.";
             explanation = "Source files are retained. Tool-call text inside reasoning was not executed, and automatic continuation stopped.";

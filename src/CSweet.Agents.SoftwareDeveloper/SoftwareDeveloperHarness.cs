@@ -15,6 +15,9 @@ internal static class SoftwareDeveloperHarness
         Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null)
     {
         const int maximumTurns = 6;
+        using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, checkpointCancellation.Cancel);
+        if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
         var activeSession = session;
         for (var turn = 0; turn < maximumTurns; turn++)
@@ -24,7 +27,12 @@ internal static class SoftwareDeveloperHarness
             {
                 try
                 {
-                    response = await harness.RunAsync(prompt, activeSession, options: null, cancellationToken);
+                    response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (checkpoints?.Failure is { } checkpointFailure) throw checkpointFailure;
+                }
+                catch (Exception) when (checkpoints?.Failure is not null)
+                {
+                    throw checkpoints.Failure;
                 }
                 catch (Exception error) when (error is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
                 {
@@ -92,6 +100,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static bool IsContextCapacityFailure(Exception error)
     {
+        if (error is WorkspaceCheckpointException) return false;
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current.Message.Contains("exceeds the message, text, or tool limit", StringComparison.OrdinalIgnoreCase) ||
@@ -105,6 +114,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static bool IsTransientTransportFailure(Exception error)
     {
+        if (error is WorkspaceCheckpointException) return false;
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
             if (current is HttpRequestException &&

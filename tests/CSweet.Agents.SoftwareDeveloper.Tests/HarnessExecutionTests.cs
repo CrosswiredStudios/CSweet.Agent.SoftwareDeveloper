@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.IO.Compression;
+using CSweet.Agent.SDK;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +10,118 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class HarnessExecutionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Interrupted_harness_recovers_real_uploaded_source_in_a_fresh_workspace(bool shellEdit)
+    {
+        var workspace = new GitWorkspaceResult(Guid.NewGuid(), Guid.NewGuid(), "remote", Guid.NewGuid(),
+            "InternalGit", "PullRequest", new string('a', 40), "Ready", false);
+        var archivePath = Path.GetTempFileName();
+        using (var stream = File.Create(archivePath))
+        using (var zip = new ZipArchive(stream, ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("README.md").Open())) writer.Write("Original");
+        var runtime = new AgentTestRuntime().RegisterCapability<GitWorkspaceSyncRequest, GitWorkspaceSyncResult>(
+            GitWorkspaceCapabilities.Sync, async (request, token) =>
+            {
+                Assert.Equal(workspace.WorkspaceId, request.WorkspaceId);
+                Assert.Equal(1, request.AssignmentRevision);
+                if (request.Direction == "push")
+                {
+                    await File.WriteAllBytesAsync(archivePath, request.Archive!, token);
+                    return new GitWorkspaceSyncResult();
+                }
+                return new GitWorkspaceSyncResult(await File.ReadAllBytesAsync(archivePath, token));
+            });
+        var git = runtime.CreateContext().Platform.Git;
+        var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspace.WorkspaceId);
+        using var cancelled = new CancellationTokenSource();
+        try
+        {
+            var local = await git.MaterializeAsync(workspace, 1);
+            using (var client = new ScriptedClient(false, shellEdit: shellEdit, beforeCall: call =>
+            {
+                if (call == 3) { cancelled.Cancel(); cancelled.Token.ThrowIfCancellationRequested(); }
+            }))
+            {
+                await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+                var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+                var session = await harness.CreateSessionAsync();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SoftwareDeveloperHarness.RunImplementationAsync(
+                    harness, session, "Implement", root,
+                    cancelled.Token, token => git.UploadAsync(local, 1, token)));
+            }
+            // The old runtime's isolated source is unavailable to the replacement.
+            Directory.Move(root, root + "-terminated");
+            var freshGit = runtime.CreateContext().Platform.Git;
+            var restored = await freshGit.MaterializeAsync(workspace, 1);
+            Assert.Equal("implemented", (await File.ReadAllTextAsync(Path.Combine(restored.Path, "app.txt"))).Trim());
+            Assert.False(File.Exists(Path.Combine(restored.Path, ".csweet", "outcome.json")));
+        }
+        finally
+        {
+            foreach (var path in new[] { root, root + "-terminated" })
+                if (Directory.Exists(path)) Directory.Delete(path, true);
+            File.Delete(archivePath);
+        }
+    }
+
+    [Fact]
+    public async Task Completed_edit_is_durable_before_a_later_model_call_is_cancelled()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-interrupted-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        using var cancelled = new CancellationTokenSource();
+        try
+        {
+            string? retained = null;
+            using var client = new ScriptedClient(false, beforeCall: call =>
+            {
+                if (call == 3)
+                {
+                    Assert.Equal("implemented", retained);
+                    cancelled.Cancel();
+                    cancelled.Token.ThrowIfCancellationRequested();
+                }
+            });
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Implement", root, cancelled.Token, async token =>
+                { token.ThrowIfCancellationRequested(); retained = await File.ReadAllTextAsync(Path.Combine(root, "app.txt"), token); }));
+            Assert.Equal("implemented", retained);
+            Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Failed_checkpoint_stops_coding_without_replaying_the_mutation()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-checkpoint-failed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            using var client = new ScriptedClient(false);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            var uploads = 0;
+            var failure = await Assert.ThrowsAsync<WorkspaceCheckpointException>(() => SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Implement", root, default, _ => { uploads++; throw new IOException("Snapshot unavailable"); }));
+            Assert.True(DevelopmentFailurePolicy.IsOperational(failure));
+            var diagnostic = DevelopmentDiagnostics.DevelopmentBlockerMessage(failure, null, "Implementation");
+            Assert.Contains("last completed checkpoint", diagnostic);
+            Assert.DoesNotContain("repair attempts are exhausted", diagnostic);
+            Assert.Equal(1, uploads);
+            Assert.Equal("implemented", await File.ReadAllTextAsync(Path.Combine(root, "app.txt")));
+            Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+            Assert.Equal(2, client.Calls);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData("{}")]
     [InlineData("{\"summary\":\"Build timed out\",\"changedFiles\":[\"app.txt\"],\"validations\":[{\"command\":\"npm run build\",\"succeeded\":false,\"exitCode\":124}]}")]
@@ -271,7 +385,9 @@ public sealed class HarnessExecutionTests
         bool transportFailureOnce = false,
         string? malformedToolCall = null,
         bool reasoningToolHint = false,
-        string outcomeJson = "{}") : IChatClient
+        string outcomeJson = "{}",
+        Action<int>? beforeCall = null,
+        bool shellEdit = false) : IChatClient
     {
         public int Calls, Results;
         public void Dispose() { }
@@ -284,6 +400,7 @@ public sealed class HarnessExecutionTests
         {
             await Task.Yield();
             Calls++;
+            beforeCall?.Invoke(Calls);
             if (contextLimitOnce && Calls == 1)
                 throw new InvalidOperationException("The LLM request exceeds the message, text, or tool limit.");
             if (transportFailureOnce && Calls == 1)
@@ -303,13 +420,14 @@ public sealed class HarnessExecutionTests
             foreach (var result in messages.SelectMany(x => x.Contents).OfType<FunctionResultContent>())
                 Assert.DoesNotContain("Error", result.Result?.ToString() ?? "", StringComparison.OrdinalIgnoreCase);
             var step = Calls - (stopEarly ? 1 : 0);
-            var name = step == 1 ? "file_access_ls" : "file_access_write";
+            var name = step == 1 ? "file_access_ls" : step == 2 && shellEdit ? "execute_workspace_command" : "file_access_write";
             if (step <= 3)
             {
                 var tool = options!.Tools!.OfType<AIFunction>().Single(x => x.Name == name);
                 if (!expectApproval) Assert.IsNotType<ApprovalRequiredAIFunction>(tool);
 
                 var args = step == 1 ? new Dictionary<string, object?> { ["directory"] = "" } :
+                    step == 2 && shellEdit ? new Dictionary<string, object?> { ["command"] = "echo implemented > app.txt" } :
                     new Dictionary<string, object?> { ["fileName"] = step == 2 ? "app.txt" : ".csweet/outcome.json",
                         ["content"] = step == 2 ? "implemented" : outcomeJson, ["overwrite"] = true };
                 var contents = new List<AIContent>();

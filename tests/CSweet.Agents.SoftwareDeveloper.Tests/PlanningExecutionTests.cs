@@ -101,7 +101,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             Assert.Equal(tasks[index].Revision, request.ExpectedRevision);
             if (request.Status == "Completed")
             {
-                Assert.Equal(1, pushes);
+                Assert.Equal(2, pushes); // Completed source edit, then accepted-task checkpoint.
                 Assert.Contains("exit 0", request.Evidence);
             }
             tasks[index] = tasks[index] with { Status = request.Status, Revision = tasks[index].Revision + 1 };
@@ -153,7 +153,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             }
             Assert.Equal(2, planCalls);
             Assert.Equal(1, factory.PlanningCalls);
-            Assert.Equal(2, pushes);
+            Assert.Equal(4, pushes); // Each task checkpoints its edit and its final disposition.
             Assert.Equal(1, checkpoints);
             Assert.Equal("Running", tasks[1].Status);
             if (exhaustRepairBudget)
