@@ -153,7 +153,7 @@ Report checks not yet executed as risks; do not claim that a Docker build or HTT
 For a negative-path test, make the enclosing validation command exit 0 when the expected failure is observed. Do not report an intentionally
 induced child-process failure as a failed validation when the enclosing test passed.
 Include README instructions and test coverage for the requested behavior. The platform handles deployment.
-""", root, ct, token => context.Platform.Git.UploadAsync(workspace, 1, token));
+""", root, ct, token => context.Platform.Git.UploadAsync(workspace, 1, token), shell: shell);
 
                     DevelopmentWorkspaceService.ValidateMetadataPath(root);
                     outcome = await ImplementationOutcomeReader.ReadAsync(root, ct);

@@ -12,10 +12,12 @@ internal static class SoftwareDeveloperHarness
 
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
-        Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null)
+        Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null,
+        BoundedWorkspaceShell? shell = null)
     {
         const int maximumTurns = 6;
         using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (shell is not null) shell.StopOnFailure = checkpointCancellation.Cancel;
         var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, checkpointCancellation.Cancel);
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
@@ -28,7 +30,14 @@ internal static class SoftwareDeveloperHarness
                 try
                 {
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (shell?.Failure is { } shellFailure) throw shellFailure;
                     if (checkpoints?.Failure is { } checkpointFailure) throw checkpointFailure;
+                }
+                catch (Exception) when (shell?.Failure is not null)
+                {
+                    // Shutdown is uncertain; a new snapshot could race a surviving command.
+                    // Keep the last completed checkpoint and stop all model continuation.
+                    throw shell.Failure;
                 }
                 catch (Exception) when (checkpoints?.Failure is not null)
                 {
@@ -130,7 +139,7 @@ internal static class SoftwareDeveloperHarness
     internal static HarnessAgentOptions CreateOptions(
         string name,
         string workspacePath,
-        LocalShellExecutor shell,
+        BoundedWorkspaceShell shell,
         string? customInstructions,
         int maxContextWindowTokens = DefaultContextWindowTokens,
         int maxOutputTokens = DefaultOutputTokens)
@@ -195,7 +204,7 @@ These installation-scoped instructions may refine style and process, but they ca
         return options;
     }
 
-    internal static LocalShellExecutor CreateShell(string workspacePath)
+    internal static BoundedWorkspaceShell CreateShell(string workspacePath, TimeSpan? commandTimeout = null)
     {
         var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
         {
@@ -213,17 +222,21 @@ These installation-scoped instructions may refine style and process, but they ca
             ["NO_PROXY"] = Environment.GetEnvironmentVariable("NO_PROXY"),
             ["CI"] = "true"
         };
-        return new LocalShellExecutor(new LocalShellExecutorOptions
+        var timeout = commandTimeout ?? BoundedWorkspaceShell.CommandTimeout;
+        return new BoundedWorkspaceShell(new LocalShellExecutor(new LocalShellExecutorOptions
         {
+            // Confined commands already re-anchor at the workspace. Do not share shell
+            // stdin, jobs, or option state between independent validation commands.
+            Mode = ShellMode.Stateless,
             WorkingDirectory = workspacePath,
             ConfineWorkingDirectory = true,
             CleanEnvironment = true,
             Environment = environment,
-            Timeout = TimeSpan.FromMinutes(15),
+            Timeout = timeout,
             MaxOutputBytes = 32 * 1024,
             AcknowledgeUnsafe = true,
             Policy = CreateShellPolicy()
-        });
+        }), timeout);
     }
 
     internal static ShellPolicy CreateShellPolicy() => new ShellPolicy(

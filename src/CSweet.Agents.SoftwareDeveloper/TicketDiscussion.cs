@@ -11,9 +11,13 @@ internal static class Discussion
 {
     internal const string Changed = "com.csweet.work.item.discussion.changed.v1";
     internal const string Waiting = "discussion.response-requested:v1";
+    internal const string RevisionRequest = "[task-revision-request:v1]";
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
     internal sealed record Hint(Guid BoardId, Guid ItemId, Guid CommentId, long CommentRevision, bool RequiresResponse);
-    internal sealed record ResponseWait(Guid BoardId, Guid ItemId, Guid CommentId, long CommentRevision, Guid RespondingInstallationId);
+    internal sealed record ResponseWait(Guid BoardId, Guid ItemId, Guid CommentId, long CommentRevision, Guid RespondingInstallationId)
+    {
+        public bool RequiresRevision { get; init; }
+    }
     internal static string Correlation(Guid commentId, long revision) => $"{commentId:D}:{revision}";
     internal static bool Mentions(string body, string name) => !string.IsNullOrWhiteSpace(name) &&
         Regex.IsMatch(body, @"(?<![\w@])@" + Regex.Escape(name) + @"(?=$|[\r\n,:;.!?])", RegexOptions.CultureInvariant);

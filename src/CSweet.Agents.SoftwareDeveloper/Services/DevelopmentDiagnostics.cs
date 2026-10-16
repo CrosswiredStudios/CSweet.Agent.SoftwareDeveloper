@@ -21,7 +21,13 @@ internal static class DevelopmentDiagnostics
         var heading = "What happened";
         var platform = error as PlatformCapabilityException;
 
-        if (error is WorkspaceCheckpointException)
+        if (error is WorkspaceCommandTerminationException)
+        {
+            headline = "A workspace command timed out and its shutdown could not be confirmed.";
+            explanation = "Coding stopped; the last completed checkpoint is retained. A surviving command must not race a retry.";
+            next = "The platform administrator should replace the isolated runtime, then retry from the saved source. Run the CI stages separately to identify the failing step.";
+        }
+        else if (error is WorkspaceCheckpointException)
         {
             headline = "The latest source edits could not be saved to the platform.";
             explanation = "Coding stopped to avoid accumulating unsaved changes. Only the last completed checkpoint is confirmed recoverable; the latest local edits may still need recovery.";

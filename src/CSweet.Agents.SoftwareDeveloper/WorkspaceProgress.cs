@@ -47,12 +47,12 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         return result;
     }
 
-    internal AIFunction ShellTool(LocalShellExecutor shell) => AIFunctionFactory.Create(
+    internal AIFunction ShellTool(BoundedWorkspaceShell shell) => AIFunctionFactory.Create(
         (string command, CancellationToken cancellationToken) => RunShellAsync(shell, command, cancellationToken),
         "execute_workspace_command",
         "Run an approved inspection, edit, restore, build, test, format, static-analysis, or local Git command inside the assignment workspace.");
 
-    internal async Task<string> RunShellAsync(LocalShellExecutor shell, string command, CancellationToken token)
+    internal async Task<string> RunShellAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
     {
         var operation = Interlocked.Increment(ref _operations);
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command)));

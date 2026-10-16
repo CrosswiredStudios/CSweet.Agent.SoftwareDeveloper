@@ -104,11 +104,16 @@ internal sealed class DirectImplementationService(
                 cancellationToken);
 
             var session = await harness.CreateSessionAsync(cancellationToken);
-            var response = await harness.RunAsync(
+            using var shellCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            shell.StopOnFailure = shellCancellation.Cancel;
+            AgentResponse response;
+            try { response = await harness.RunAsync(
                 BuildPrompt(request.WorkId, input!),
                 session,
                 options: null,
-                cancellationToken);
+                shellCancellation.Token); }
+            catch (Exception) when (shell.Failure is not null) { throw shell.Failure; }
+            if (shell.Failure is { } failure) throw failure;
 
             if (string.IsNullOrWhiteSpace(response.Text))
             {
