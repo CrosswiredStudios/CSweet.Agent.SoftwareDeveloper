@@ -16,10 +16,77 @@ internal sealed class WorkspaceValidation
             .Select(x => new CSweet.Agent.SDK.WorkspaceValidationReceipt(x.Key, x.Value.Result.Succeeded, x.Value.Result.ExitCode)).ToArray());
     }
 
-    internal static bool IsStandalone(string command) => !string.IsNullOrWhiteSpace(command) && command.Length <= 2048 &&
-        command.IndexOfAny(['|', ';', '&', '\r', '\n', '`', '$', '>', '<']) < 0 &&
-        new[] { "npm ", "npx ", "node ", "dotnet ", "python ", "python3 ", "pytest", "cargo ", "go ", "tsc ", "vitest", "pnpm ", "yarn ", "bun ", "deno ", "make ", "cmake ", "gradle ", "mvn " }
-            .Any(x => command.TrimStart().StartsWith(x, StringComparison.Ordinal));
+    internal const string Guidance = "Validation evidence must use a single supported executable command with its actual exit code. " +
+        "Pipelines, chaining, redirection, command substitution and status masking are not accepted. " +
+        "Use project test scripts (for example node scripts/verify-build.mjs or python3 tests/verify_assets.py) " +
+        "that assert the required behavior and exit 0 only when it holds. A grep absence check normally exits 1 when no match exists; " +
+        "express that expectation in an assertion script instead of reporting an intentional failure or masking it with || true. " +
+        "A successful file listing alone does not assert that prohibited files are absent.";
+
+    internal static bool IsStandalone(string command)
+    {
+        if (string.IsNullOrWhiteSpace(command) || command.Length > 2048) return false;
+        var arguments = new List<string>();
+        var word = new StringBuilder();
+        var quote = '\0';
+        var started = false;
+        for (var index = 0; index < command.Length; index++)
+        {
+            var c = command[index];
+            if (c is '\r' or '\n' or '\0') return false;
+            if (quote == '\'')
+            {
+                if (c == '\'') quote = '\0'; else word.Append(c);
+                continue;
+            }
+            if (c == '\\')
+            {
+                if (++index == command.Length || command[index] is '\r' or '\n' or '\0') return false;
+                // Double quotes only escape these characters in the supported shell syntax.
+                if (quote == '"' && command[index] is not ('"' or '\\' or '$' or '`')) word.Append('\\');
+                word.Append(command[index]); started = true; continue;
+            }
+            if (c is '$' or '`') return false;
+            if (quote == '"')
+            {
+                if (c == '"') quote = '\0'; else word.Append(c);
+                continue;
+            }
+            if (c is '\'' or '"') { quote = c; started = true; continue; }
+            if (c is '|' or ';' or '&' or '>' or '<' or '(' or ')' or '#') return false;
+            if (char.IsWhiteSpace(c))
+            {
+                if (started) { arguments.Add(word.ToString()); word.Clear(); started = false; }
+            }
+            else { word.Append(c); started = true; }
+        }
+        if (quote != '\0') return false;
+        if (started) arguments.Add(word.ToString());
+        if (arguments.Count == 0 || !new[] { "npm", "npx", "node", "dotnet", "python", "python3", "pytest", "cargo", "go", "tsc", "vitest", "pnpm", "yarn", "bun", "deno", "make", "cmake", "gradle", "mvn", "grep", "find", "rg" }
+            .Contains(arguments[0], StringComparer.Ordinal)) return false;
+        // These search options execute other commands or mutate the tree, rather than validate it.
+        return arguments[0] switch
+        {
+            "find" => !arguments.Skip(1).Any(x => x is "-exec" or "-execdir" or "-ok" or "-okdir" or "-delete" or "-fprint" or "-fprint0" or "-fprintf" or "-fls"),
+            "rg" => !arguments.Skip(1).Any(x => x == "--pre" || x.StartsWith("--pre=", StringComparison.Ordinal)),
+            _ => true
+        };
+    }
+
+    internal async Task<SoftwareDevelopmentOutcome> VerifyWithRepairAsync(SoftwareDevelopmentOutcome outcome,
+        BoundedWorkspaceShell shell, string root,
+        Func<SoftwareDevelopmentOutcome, CancellationToken, Task<SoftwareDevelopmentOutcome>> repair, CancellationToken token)
+    {
+        for (var pass = 0; ; pass++)
+        {
+            token.ThrowIfCancellationRequested();
+            outcome = await VerifyAsync(outcome, shell, root, token);
+            if (outcome.Validations.Count > 0 && outcome.Validations.All(x => x.Succeeded && x.ExitCode == 0) ||
+                pass == 2 || DevelopmentDiagnostics.MissingToolDecision(outcome, "current ticket") is not null)
+                return outcome;
+            outcome = await repair(outcome, token);
+        }
+    }
 
     internal void Record(string command, ShellResult result, string source)
     {

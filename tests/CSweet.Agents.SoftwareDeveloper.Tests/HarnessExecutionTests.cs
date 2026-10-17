@@ -11,6 +11,74 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class HarnessExecutionTests
 {
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Invalid_completion_checks_receive_bounded_harness_repair_and_keep_executed_evidence(bool remainsInvalid, bool absenceSearch)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-validation-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "app.txt"), "retained implementation");
+            using var client = new ValidationRepairClient(remainsInvalid);
+            var executor = new ValidationExecutor();
+            await using var shell = new BoundedWorkspaceShell(executor, TimeSpan.FromSeconds(1));
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            var session = await harness.CreateSessionAsync();
+            var checkpoints = 0; var repairs = 0;
+            var result = await new WorkspaceValidation().VerifyWithRepairAsync(new("Implemented", ["app.txt"],
+                [new(absenceSearch ? "grep -rcE 'cdnjs|unpkg' dist" : "npm test || true", true, 0)]), shell, root, async (failed, ct) =>
+            {
+                repairs++;
+                Assert.False(Assert.Single(failed.Validations).Succeeded);
+                if (absenceSearch) Assert.Equal(1, failed.Validations[0].ExitCode);
+                await SoftwareDeveloperHarness.RunImplementationAsync(harness, session,
+                    WorkspaceValidation.Guidance + "\n" + DevelopmentDiagnostics.FailedValidationSummary(failed), root, ct,
+                    _ => { checkpoints++; return Task.CompletedTask; });
+                return await ImplementationOutcomeReader.ReadAsync(root, ct);
+            }, default);
+            Assert.Equal(remainsInvalid ? 2 : 1, repairs);
+            Assert.True(checkpoints > 0);
+            Assert.Equal("retained implementation", await File.ReadAllTextAsync(Path.Combine(root, "app.txt")));
+            Assert.Equal(remainsInvalid ? 0 : absenceSearch ? 2 : 1, executor.Calls);
+            Assert.Equal(!remainsInvalid, Assert.Single(result.Validations).Succeeded);
+            if (!remainsInvalid) Assert.Equal("node verify-build.mjs", result.Validations[0].Command);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    private sealed class ValidationExecutor : Microsoft.Agents.AI.Tools.Shell.ShellExecutor
+    {
+        public int Calls;
+        public override Task<Microsoft.Agents.AI.Tools.Shell.ShellResult> RunAsync(string command, CancellationToken token = default)
+        { Calls++; return Task.FromResult(new Microsoft.Agents.AI.Tools.Shell.ShellResult("", "", command.StartsWith("grep ", StringComparison.Ordinal) ? 1 : 0, TimeSpan.Zero, false)); }
+        public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    private sealed class ValidationRepairClient(bool remainsInvalid) : IChatClient
+    {
+        private int _calls;
+        public object? GetService(Type type, object? key = null) => null;
+        public void Dispose() { }
+        public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null, CancellationToken cancellationToken = default) =>
+            GetStreamingResponseAsync(messages, options, cancellationToken).ToChatResponseAsync(cancellationToken);
+        public async IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            var step = ++_calls % 3;
+            if (step == 0) { yield return new(ChatRole.Assistant, "Report corrected."); yield break; }
+            var outcome = new SoftwareDevelopmentOutcome("Retained implementation verified", [],
+                [new(remainsInvalid ? "npm test || true" : "node verify-build.mjs", true, 0)]);
+            yield return new(ChatRole.Assistant, [new FunctionCallContent("report-" + _calls, "file_access_write", new Dictionary<string, object?>
+            { ["fileName"] = step == 1 ? "verify-build.mjs" : ".csweet/outcome.json",
+                ["content"] = step == 1 ? "// Assert the accepted build requirements.\n" : JsonSerializer.Serialize(outcome, new JsonSerializerOptions(JsonSerializerDefaults.Web)), ["overwrite"] = true })]);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public async Task Interrupted_harness_recovers_real_uploaded_source_in_a_fresh_workspace(bool shellEdit)

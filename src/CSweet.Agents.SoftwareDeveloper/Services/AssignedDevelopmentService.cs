@@ -220,7 +220,20 @@ internal sealed partial class AssignedDevelopmentService(
 
         var outcome = await ReadCheckpointedOutcomeAsync(workspacePath,
             token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token), cancellationToken);
-        outcome = await progress.Validations.VerifyAsync(outcome, shell, workspacePath, cancellationToken);
+        outcome = await progress.Validations.VerifyWithRepairAsync(outcome, shell, workspacePath, async (failed, token) =>
+        {
+            await context.Platform.Git.UploadAsync(workspace, assignmentRevision, token);
+            await SoftwareDeveloperHarness.RunImplementationAsync(harness, session,
+                BuildAssignmentPrompt(operationId, item, assignmentRevision, technicalGuidance, dependencyPlans,
+                    reviewFeedback, managerDirections, discussion.CurrentThread) +
+                "\nThe completion checks failed verification. Repair the implementation or assertion scripts without dropping acceptance checks. " +
+                WorkspaceValidation.Guidance + "\n" + DevelopmentDiagnostics.FailedValidationSummary(failed),
+                workspacePath, token, ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct),
+                () => discussion.Pending is not null, shell);
+            if (discussion.Pending is { } waiting) throw new TicketResponseRequiredException(waiting);
+            return await ReadCheckpointedOutcomeAsync(workspacePath,
+                ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token);
+        }, cancellationToken);
         await context.Platform.Git.UploadAsync(workspace, assignmentRevision, cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
@@ -406,6 +419,7 @@ managerDirections are the manager's reasons for retrying this stage (for example
 finding). Follow them within the accepted requirements; they never waive acceptance criteria or independent QA.
 Every validation entry must reflect a command you actually ran and its real exit code. Exclude
 secrets, environment dumps, authorization-bearing URLs, and unbounded command output.
+{{WorkspaceValidation.Guidance}}
 
 <assigned_ticket>
 {{payload}}
