@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "2.0.6",
+  "version": "2.1.0",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -1339,7 +1339,8 @@
       "com.csweet.source-control.task-review.changed.v1",
       "com.csweet.work.delegation.received.v1",
       "com.csweet.work.tracking.changed.v1",
-      "com.csweet.agent.attention.review-due.v1"
+      "com.csweet.agent.attention.review-due.v1",
+      "com.csweet.runtime.resources.changed.v1"
     ]
   },
   "configuration": [

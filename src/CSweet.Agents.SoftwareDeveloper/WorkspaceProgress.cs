@@ -9,8 +9,9 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 /// <summary>Reports executed local tools without copying commands, file content, or output into progress.</summary>
 internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationToken, Task> report, ILogger logger,
-    int operationLimit = 500)
+    int operationLimit = 500, string? workspacePath = null)
 {
+    internal WorkspaceValidation Validations { get; } = new();
     private readonly SemaphoreSlim _reports = new(1, 1);
     private readonly object _sync = new();
     private int _operations;
@@ -69,8 +70,9 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
             "npm test" or "npm run test" => "Tests", "npm ci" => "Install dependencies",
             "npm run ci" => "Validation", _ => "Workspace command"
         };
-        await PublishAsync(operation, label, "started", null, repeated, token);
+        await PublishAsync(operation, label, "started", null, repeated, token, digest);
         ShellResult result;
+        var source = workspacePath is null ? null : WorkspaceValidation.SourceFingerprint(workspacePath);
         try { result = await shell.RunAsync(command, token); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch
@@ -80,10 +82,11 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         }
         await PublishAsync(operation, label, result.TimedOut ? "timed out" : result.ExitCode == 0 ? "succeeded" : "failed",
             result.ExitCode, repeated, token);
+        if (source is not null) Validations.Record(command, result, source);
         return result.FormatForModel();
     }
 
-    private async Task PublishAsync(int operation, string label, string phase, int? exitCode, int repeated, CancellationToken token)
+    private async Task PublishAsync(int operation, string label, string phase, int? exitCode, int repeated, CancellationToken token, string? commandDigest = null)
     {
         token.ThrowIfCancellationRequested();
         // Reserve room for SDK/model progress in the bounded inbox. One explicit notice replaces
@@ -97,7 +100,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
                 $" · operation {operation}; {Volatile.Read(ref _fileUpdates)} file update attempts returned." +
                 (repeated > 1 ? $" Same command run {repeated} times consecutively." : "");
             if (operation > limit) message = "Workspace progress reporting limit reached; later local operations are not shown. Work continues.";
-            await report(new { itemId, kind = "workspace-tool", message, operation, phase, exitCode, repeated }, token);
+            await report(new { itemId, kind = "workspace-tool", message, operation, phase, exitCode, repeated, commandDigest }, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception)

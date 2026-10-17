@@ -104,8 +104,11 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 }
                 using var stream = new MemoryStream();
                 using (var zip = new ZipArchive(stream, ZipArchiveMode.Create, true))
-                using (var writer = new StreamWriter(zip.CreateEntry("Dockerfile").Open()))
-                    writer.Write("FROM csweet/node:22");
+                {
+                    using (var writer = new StreamWriter(zip.CreateEntry("Dockerfile").Open())) writer.Write("FROM csweet/node:22");
+                    using (var writer = new StreamWriter(zip.CreateEntry("verify.cjs").Open()))
+                        writer.Write("require('node:assert/strict').equal(require('node:fs').readFileSync('Dockerfile','utf8'),'FROM csweet/node:22');");
+                }
                 return Task.FromResult(new GitWorkspaceSyncResult(stream.ToArray()));
             })
             .RegisterCapability<PublishGitWorkspaceRequest, GitWorkspacePublication>(GitWorkspaceCapabilities.Publish, (r, _) =>
@@ -120,7 +123,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             });
         f.Runtime.RegisterCapability<JsonElement, PersonalTodoDirectory>(PersonalTodoCapabilities.Read, (_, _) => Task.FromResult(
             new PersonalTodoDirectory([new(task.BoardId, task.OwnerOrganizationUserId, "Daniel", null, null, 1, [task])], task.OwnerOrganizationUserId)));
-        var factory = new OutcomeFactory(ImplementationOutcomeTests.VerifiedUnchanged);
+        var factory = new OutcomeFactory(ImplementationOutcomeTests.VerifiedUnchanged.Replace("python3 -m unittest tests.test_dockerfile", "node verify.cjs"));
         try
         {
             for (var callback = 0; callback < (failAt == "none" ? 1 : 2); callback++)
@@ -132,7 +135,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 // A new runtime has no previous local files. Only durable evidence may be reused.
                 if (Directory.Exists(root)) Directory.Delete(root, true);
             }
-            Assert.Equal("Completed", task.Status);
+            Assert.True(task.Status == "Completed", f.State.Payload.GetRawText());
             Assert.Equal(1, factory.Calls);
             Assert.Equal(1, uploads);
             Assert.Equal(failAt == "publication" ? 2 : 1, publications);

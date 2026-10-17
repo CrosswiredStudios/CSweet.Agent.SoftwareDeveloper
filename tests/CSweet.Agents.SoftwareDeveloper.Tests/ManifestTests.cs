@@ -96,7 +96,7 @@ public sealed class ManifestTests
         Assert.Empty(root.GetProperty("credentials").EnumerateArray());
         Assert.Equal(
             [TicketConversations.Discussion.Changed, ProjectIntakeCapabilities.Changed, AgentLifecycleEvents.Onboarded, "com.csweet.calendar.reminder-due.v1", PersonalTodoEvents.Available, CommunicationEvents.MessageMentioned,
-                AgentCoordinationEvents.TurnRequested, CommunicationEvents.MessageReceived, "com.csweet.compute.changed.v1", "com.csweet.compute.available.v1", TaskDeliveryCapabilities.Changed, DelegationCapabilities.Received, DelegationCapabilities.Changed, AgentAttentionEvents.ReviewDue],
+                AgentCoordinationEvents.TurnRequested, CommunicationEvents.MessageReceived, "com.csweet.compute.changed.v1", "com.csweet.compute.available.v1", TaskDeliveryCapabilities.Changed, DelegationCapabilities.Received, DelegationCapabilities.Changed, AgentAttentionEvents.ReviewDue, WorkloadResourceEvents.Changed],
             root.GetProperty("events").GetProperty("subscribes")
                 .EnumerateArray().Select(item => item.GetString()!).ToArray());
     }

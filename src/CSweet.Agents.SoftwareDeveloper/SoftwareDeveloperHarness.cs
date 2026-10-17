@@ -17,8 +17,8 @@ internal static class SoftwareDeveloperHarness
     {
         const int maximumTurns = 6;
         using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (shell is not null) shell.StopOnFailure = checkpointCancellation.Cancel;
-        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, checkpointCancellation.Cancel);
+        if (shell is not null) shell.StopOnFailure = () => _ = checkpointCancellation.CancelAsync();
+        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, () => _ = checkpointCancellation.CancelAsync());
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
         var activeSession = session;
@@ -30,8 +30,13 @@ internal static class SoftwareDeveloperHarness
                 try
                 {
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (shell?.ResourceHandoff is { } handoff) throw handoff;
                     if (shell?.Failure is { } shellFailure) throw shellFailure;
                     if (checkpoints?.Failure is { } checkpointFailure) throw checkpointFailure;
+                }
+                catch (Exception) when (shell?.ResourceHandoff is not null)
+                {
+                    throw shell.ResourceHandoff;
                 }
                 catch (Exception) when (shell?.Failure is not null)
                 {
@@ -145,6 +150,7 @@ internal static class SoftwareDeveloperHarness
         int maxOutputTokens = DefaultOutputTokens)
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
+        instructions += "\nValidation evidence must use standalone executable commands. Do not use pipelines, chained commands, echo, or shell status masking as a passing result. The publication boundary checks executed exit codes against current source and reruns missing evidence.\n";
         if (!string.IsNullOrWhiteSpace(customInstructions))
         {
             instructions += $"""
@@ -206,9 +212,10 @@ These installation-scoped instructions may refine style and process, but they ca
 
     internal static BoundedWorkspaceShell CreateShell(string workspacePath, TimeSpan? commandTimeout = null)
     {
-        var environment = new Dictionary<string, string?>(StringComparer.Ordinal)
+        var environment = new Dictionary<string, string?>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
         {
-            ["PATH"] = "/run/csweet/workload/tools/bin" + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
+            [OperatingSystem.IsWindows() ? "Path" : "PATH"] = "/run/csweet/workload/tools/bin" + Path.PathSeparator + Environment.GetEnvironmentVariable("PATH"),
+            ["PATHEXT"] = OperatingSystem.IsWindows() ? Environment.GetEnvironmentVariable("PATHEXT") ?? ".COM;.EXE;.BAT;.CMD" : null,
             ["HOME"] = "/run/csweet/workload/home",
             ["npm_config_cache"] = "/run/csweet/workload/cache/npm",
             ["PIP_CACHE_DIR"] = "/run/csweet/workload/cache/pip",

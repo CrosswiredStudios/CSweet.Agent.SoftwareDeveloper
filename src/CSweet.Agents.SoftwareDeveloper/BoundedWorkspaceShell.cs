@@ -11,13 +11,32 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
     private readonly TimeSpan _cleanupGrace = cleanupGrace ?? TimeSpan.FromSeconds(10);
     internal WorkspaceCommandTimeoutException? Failure { get; private set; }
     internal Action? StopOnFailure { get; set; }
+    internal Func<string, CancellationToken, Task>? BeforeCommand { get; set; }
+    internal CSweet.Agent.SDK.WorkloadResourceHandoffException? ResourceHandoff { get; private set; }
+
+    internal void RequestHandoff(CSweet.Agent.SDK.WorkloadResourceHandoffException handoff)
+    {
+        ResourceHandoff = handoff;
+        StopOnFailure?.Invoke();
+        throw handoff;
+    }
 
     public override async Task<ShellResult> RunAsync(string command, CancellationToken cancellationToken = default)
     {
         if (Failure is { } failure) throw failure;
+        if (ResourceHandoff is { } handoff) throw handoff;
         cancellationToken.ThrowIfCancellationRequested();
+        if (BeforeCommand is not null)
+        {
+            try { await BeforeCommand(command, cancellationToken); }
+            catch (CSweet.Agent.SDK.WorkloadResourceHandoffException request)
+            {
+                ResourceHandoff = request;
+                StopOnFailure?.Invoke();
+                throw;
+            }
+        }
         using var commandCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        commandCancellation.CancelAfter(timeout);
         var execution = inner.RunAsync(command, commandCancellation.Token);
         try
         {
@@ -27,20 +46,26 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         }
         catch (Exception error) when (error is TimeoutException or OperationCanceledException)
         {
-            commandCancellation.Cancel();
+            // Cancellation callbacks can block synchronously. Bound their completion too.
+            var cancellation = commandCancellation.CancelAsync();
+            try { await cancellation.WaitAsync(_cleanupGrace); }
+            catch (TimeoutException) { Observe(cancellation); throw Stop(true); }
+            catch (Exception) { Observe(execution); throw Stop(true); }
             try { await execution.WaitAsync(_cleanupGrace); }
             catch (OperationCanceledException) { /* Expected after a confirmed cancelled command. */ }
             catch (TimeoutException)
             {
                 // Observe a late fault without awaiting an unbounded cleanup path.
-                _ = execution.ContinueWith(t => _ = t.Exception, CancellationToken.None,
-                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                Observe(execution);
                 throw Stop(true);
             }
             cancellationToken.ThrowIfCancellationRequested();
             throw Stop(false);
         }
     }
+
+    private static void Observe(Task task) => _ = task.ContinueWith(t => _ = t.Exception, CancellationToken.None,
+        TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     private WorkspaceCommandTimeoutException Stop(bool uncertain)
     {
@@ -62,7 +87,12 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
     public override async ValueTask DisposeAsync()
     {
         try { await inner.DisposeAsync().AsTask().WaitAsync(_cleanupGrace); }
-        catch (TimeoutException) { /* Do not strand the callback on library cleanup. */ }
+        catch (Exception)
+        {
+            // Preserve a pending handoff/typed timeout. Otherwise an unconfirmed disposal
+            // must stop runtime reuse instead of converting cleanup failure into success.
+            if (Failure is null && ResourceHandoff is null) throw Stop(true);
+        }
     }
 }
 

@@ -8,6 +8,60 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class WorkspaceShellTests
 {
     [Fact]
+    public async Task Faulting_cancellation_callback_is_a_typed_uncertain_shutdown()
+    {
+        await using var shell = new BoundedWorkspaceShell(new FaultingCancellation(), TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(30));
+        await Assert.ThrowsAsync<WorkspaceCommandTerminationException>(() => shell.RunAsync("faulting cancellation").WaitAsync(TimeSpan.FromSeconds(3)));
+    }
+
+    private sealed class FaultingCancellation : ShellExecutor
+    {
+        public override Task<ShellResult> RunAsync(string command, CancellationToken token = default)
+        {
+            token.Register(() => throw new InvalidOperationException("Cancellation callback failed."));
+            return new TaskCompletionSource<ShellResult>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        }
+        public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Confined_clean_shell_resolves_installed_cli_extensions()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-shell-cli-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var result = await shell.RunAsync("node --version");
+            Assert.True(result.ExitCode == 0, result.FormatForModel());
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task A_blocked_cancellation_callback_cannot_strand_the_command_deadline()
+    {
+        using var release = new ManualResetEventSlim();
+        await using var shell = new BoundedWorkspaceShell(new BlockingCancellation(release), TimeSpan.FromMilliseconds(30), TimeSpan.FromMilliseconds(30));
+        try
+        {
+            await Assert.ThrowsAsync<WorkspaceCommandTerminationException>(() => shell.RunAsync("blocked cancellation").WaitAsync(TimeSpan.FromSeconds(3)));
+        }
+        finally { release.Set(); }
+    }
+
+    private sealed class BlockingCancellation(ManualResetEventSlim release) : ShellExecutor
+    {
+        public override Task<ShellResult> RunAsync(string command, CancellationToken token = default)
+        {
+            token.Register(() => release.Wait());
+            return new TaskCompletionSource<ShellResult>(TaskCreationOptions.RunContinuationsAsynchronously).Task;
+        }
+        public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
+    [Fact]
     public async Task Unconfirmed_shutdown_stops_model_continuation_and_keeps_only_the_previous_checkpoint()
     {
         var root = Path.Combine(Path.GetTempPath(), "csweet-shell-checkpoint-" + Guid.NewGuid().ToString("N"));

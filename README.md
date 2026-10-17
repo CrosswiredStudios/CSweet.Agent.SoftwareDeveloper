@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.0.6
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -36,7 +36,7 @@
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.0.6`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.1.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -472,7 +472,7 @@ The package requests `runtime.internet.public.v1` during normal permission revie
 
 ## Blocker reports
 
-Version 2.0.6 matches Video Game Engineer 4.0.7 assigned-work progress, checkpoints and comment-based task revisions.
+Version 2.1.0 matches Video Game Engineer 4.0.7 assigned-work progress, checkpoints and comment-based task revisions.
 `WorkspaceProgress` reports bounded file-tool activity, command start/exit status, and repeated-command
 counts without exposing source, paths, command arguments, or shell output. `AssignedDevelopmentService.ReadCheckpointedOutcomeAsync`
 saves final edits before validating the completion report, retaining work even when checks fail.
@@ -499,8 +499,28 @@ Uses SDK 4.4.1 bounded exact-publication task technical review and repository so
 
 ## Runtime interruption and preservation
 
-Version 2.0.6 uses SDK 4.4.1 heartbeat transport recovery. "WorkspaceCheckpoint" saves completed source edits and commands before more model/tool work. Checkpoint failure cancels coding. Cancellation and revoked authority still stop uploads; recovery restores the latest completed snapshot, so a hard crash during a tool can still lose that tool's unfinished changes. Assigned and personal development use the same mechanism. These changes require upgrading the installed agent and matching host; existing runtimes retain their loaded code.
+Version 2.1.0 uses SDK 4.4.1 heartbeat transport recovery. "WorkspaceCheckpoint" saves completed source edits and commands before more model/tool work. Checkpoint failure cancels coding. Cancellation and revoked authority still stop uploads; recovery restores the latest completed snapshot, so a hard crash during a tool can still lose that tool's unfinished changes. Assigned and personal development use the same mechanism. These changes require upgrading the installed agent and matching host; existing runtimes retain their loaded code.
 
 ## Small tasks and comment revisions
 
 Read current comment history and recheck implementation assumptions before coding or resuming. Add request_ticket_revision with the same pause, checkpoint, authorization and recovery behavior as the Video Game Engineer. Comments can supersede specific implementation guidance, but cannot waive accepted outcomes, criteria, reviews or grants. Substantial changes require linked replacement tickets through governed replanning; a replacement recommendation is not automatic cancellation or execution authority. The original stays blocked until that planning is applied.
+
+## Coding resources and recovery
+
+Coding starts at the host's 4 GiB default. The confined harness estimates project needs
+and offers `request_workload_memory`; Headquarters authorizes bounded 8/16 GiB replacements.
+Heavy commands save a source checkpoint first. A larger allocation yields the same durable
+operation and stops coding until the old VM is fenced and replaced. Subscribe to
+`com.csweet.runtime.resources.changed.v1` for a wake hint; the next authorized lease and
+workspace read supply current state. No provider, Docker, host, credential or direct resize
+access is added. Memory failures require authenticated guest-supervisor evidence.
+
+Validation uses executed command receipts bound to current source. Chaining, pipes and
+status masking cannot manufacture a passing report. Missing/stale receipts run again before
+publication. Retained source and bounded summaries support restart; metadata and dependency
+directories stay out of source snapshots. Browser guidance includes a real root-route
+server and multi-stage Docker copy, while gameplay acceptance remains independent QA.
+
+Build against sibling SDK source with `-p:UseLocalCSweetAgentSdk=true`; release checks must
+also run with this flag false against the packed SDK version. Node is required for the
+real HTTP recipe regression test.

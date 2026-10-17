@@ -53,6 +53,10 @@ internal sealed partial class AssignedDevelopmentService(
                 evidence, []);
             return AgentWorkResult.Success(outcome);
         }
+        catch (WorkloadResourceHandoffException handoff)
+        {
+            return AgentWorkResult.ResourceHandoff(handoff.Request);
+        }
         catch (WorkspaceCommandTimeoutException error)
         {
             return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
@@ -167,9 +171,14 @@ internal sealed partial class AssignedDevelopmentService(
         var maxOutputTokens = _settings.GetInt32(
             "maxOutputTokens",
             SoftwareDeveloperHarness.DefaultOutputTokens);
-        using var chatClient = await _chatClients.CreateAsync(context, cancellationToken);
         await using var shell = SoftwareDeveloperHarness.CreateShell(workspacePath);
-        var progress = new WorkspaceProgress(item.Id, context.ReportProgressAsync, _logger);
+        var progress = new WorkspaceProgress(item.Id, context.ReportProgressAsync, _logger, workspacePath: workspacePath);
+        var sizing = new WorkspaceResourceSizing(workspace, assignmentRevision, context, progress.Validations);
+        shell.BeforeCommand = sizing.BeforeCommandAsync;
+        // Read deterministic project/profile inputs before spending a model turn or
+        // restoring dependencies into a VM that already needs replacement.
+        await sizing.BeforeCommandAsync("build", cancellationToken);
+        using var chatClient = await _chatClients.CreateAsync(context, cancellationToken);
         var harnessOptions = SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,
@@ -177,7 +186,7 @@ internal sealed partial class AssignedDevelopmentService(
                 _settings.GetString("customInstructions"),
                 maxContextWindowTokens,
                 maxOutputTokens);
-        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell)];
+        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), sizing.Tool(shell)];
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken))));
         harness = discussion.AttachPauseGuard(harness);
@@ -195,9 +204,12 @@ internal sealed partial class AssignedDevelopmentService(
                 session,
                 BuildAssignmentPrompt(operationId, item, assignmentRevision,
                     technicalGuidance, dependencyPlans, reviewFeedback, managerDirections, discussion.CurrentThread) +
-                "\nFor browser application integration/deployment readiness, supply a root Dockerfile serving HTTP on 0.0.0.0:8080, or a dependency-free root index.html. Discover approved project compute features and cached images before selecting dependencies. No certified toolchain is required for the team test URL. Do not claim that HTTP health proves gameplay or independent QA.",
+                "\nRetained execution summary (context only; revalidate current source before publication): " + JsonSerializer.Serialize(workspace.ResumeSummary) +
+                "\nCurrent trusted resource policy: " + JsonSerializer.Serialize(context.Resources) + ". Use request_workload_memory before a heavy command when evidence indicates a larger VM is needed.\n" +
+                "\nFor browser application integration/deployment readiness, supply a root Dockerfile serving HTTP on 0.0.0.0:8080, or a dependency-free root index.html. Discover approved project compute features and cached images before selecting dependencies. No certified toolchain is required for the team test URL. Do not claim that HTTP health proves gameplay or independent QA.\n" + BrowserDeliveryRecipe.Guidance,
                 workspacePath,
-                cancellationToken, token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token),
+                cancellationToken, token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
+                    resumeSummary: progress.Validations.Summary(workspacePath)),
                 () => discussion.Pending is not null, shell);
         }
         catch (Exception error) when (error is not OperationCanceledException && discussion.Pending is not null)
@@ -208,6 +220,8 @@ internal sealed partial class AssignedDevelopmentService(
 
         var outcome = await ReadCheckpointedOutcomeAsync(workspacePath,
             token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token), cancellationToken);
+        outcome = await progress.Validations.VerifyAsync(outcome, shell, workspacePath, cancellationToken);
+        await context.Platform.Git.UploadAsync(workspace, assignmentRevision, cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
         {

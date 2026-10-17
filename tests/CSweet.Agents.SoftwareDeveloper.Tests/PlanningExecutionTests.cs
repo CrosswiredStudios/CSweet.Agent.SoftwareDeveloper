@@ -113,7 +113,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             {
                 pushes++;
                 using var zip = new ZipArchive(new MemoryStream(request.Archive!), ZipArchiveMode.Read);
-                Assert.NotNull(zip.GetEntry("unit.txt"));
+                Assert.NotNull(zip.GetEntry("unit.cjs"));
                 return Task.FromResult(new GitWorkspaceSyncResult());
             }
             using var stream = new MemoryStream();
@@ -144,7 +144,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 if (callback == 0)
                 {
                     Assert.Empty(f.Sent);
-                    Assert.Equal("Completed", tasks[0].Status);
+                    Assert.True(tasks[0].Status == "Completed", f.State.Payload.GetRawText());
                     Assert.All(tasks.Skip(1), x => Assert.Equal("Backlog", x.Status));
                     Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
                     // Simulate an interrupted attempt leaving stale success evidence on disk.
@@ -161,14 +161,14 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 var blocker = Assert.Single(f.Sent);
                 Assert.Contains("checks still failed", blocker);
                 Assert.Contains("A required check failed", blocker);
-                Assert.DoesNotContain("fixture-test", blocker);
-                Assert.DoesNotContain("assertion failed", blocker);
+                Assert.DoesNotContain("node --check failed.cjs", blocker);
+                Assert.DoesNotContain("SyntaxError", blocker);
                 Assert.Contains("move it to To Do", blocker);
             }
             else Assert.Empty(f.Sent);
             Assert.Equal(1, f.State.Payload.GetProperty("planRepairAttempt").GetInt32());
-            Assert.Contains("fixture-test", f.State.Payload.GetProperty("planFailure").GetString());
-            Assert.Contains("assertion failed", f.State.Payload.GetProperty("planFailure").GetString());
+            Assert.Contains("node --check failed.cjs", f.State.Payload.GetProperty("planFailure").GetString());
+            Assert.Contains("SyntaxError", f.State.Payload.GetProperty("planFailure").GetString());
             Assert.False(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
         }
         finally
@@ -226,11 +226,11 @@ public sealed partial class ComputeDeploymentRecoveryTests
             {
                 var failed = phase == 3;
                 var outcome = failed
-                    ? """{"summary":"Unit validation failed","changedFiles":["failed.txt"],"validations":[{"command":"fixture-test","succeeded":false,"exitCode":1,"diagnosticExcerpt":"assertion failed"}],"remainingRisks":[]}"""
-                    : """{"summary":"Unit tested","changedFiles":["unit.txt"],"validations":[{"command":"fixture-check","succeeded":true,"exitCode":0}],"remainingRisks":[]}""";
+                    ? """{"summary":"Unit validation failed","changedFiles":["failed.cjs"],"validations":[{"command":"node --check failed.cjs","succeeded":false,"exitCode":1,"diagnosticExcerpt":"SyntaxError"}],"remainingRisks":[]}"""
+                    : """{"summary":"Unit tested","changedFiles":["unit.cjs"],"validations":[{"command":"node --check unit.cjs","succeeded":true,"exitCode":0}],"remainingRisks":[]}""";
                 yield return new(ChatRole.Assistant, [new FunctionCallContent("write-" + turn, "file_access_write",
-                    new Dictionary<string, object?> { ["fileName"] = turn == 1 ? failed ? "failed.txt" : "unit.txt" : ".csweet/outcome.json",
-                        ["content"] = turn == 1 ? failed ? "Needs repair" : "Implemented unit" : outcome, ["overwrite"] = true })]);
+                    new Dictionary<string, object?> { ["fileName"] = turn == 1 ? failed ? "failed.cjs" : "unit.cjs" : ".csweet/outcome.json",
+                        ["content"] = turn == 1 ? failed ? "Needs repair" : "module.exports = 'Implemented unit';" : outcome, ["overwrite"] = true })]);
             }
             else yield return new(ChatRole.Assistant, "Unit complete.");
         }
