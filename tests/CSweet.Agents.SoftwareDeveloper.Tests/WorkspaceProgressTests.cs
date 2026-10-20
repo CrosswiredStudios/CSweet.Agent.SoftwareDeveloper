@@ -7,6 +7,38 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class WorkspaceProgressTests
 {
     [Fact]
+    public async Task Policy_denial_is_actionable_tool_data_without_execution_or_validation_receipts()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-policy-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var reports = new List<JsonElement>();
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (value, _) =>
+            { reports.Add(JsonSerializer.SerializeToElement(value)); return Task.CompletedTask; }, NullLogger.Instance, workspacePath: root);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var preparations = 0;
+            shell.BeforeCommand = (_, _) => { preparations++; return Task.CompletedTask; };
+            const string command = "cat /sys/class/dmi/id/product_name # private-command-marker";
+            var response = await progress.ShellTool(shell).InvokeAsync(new AIFunctionArguments(
+                new Dictionary<string, object?> { ["command"] = command }));
+            var text = Assert.IsType<JsonElement>(response).GetString();
+            Assert.Contains("workspace.command.policy_denied", text);
+            Assert.Contains("No process was started", text);
+            Assert.Contains("Do not retry", text);
+            Assert.Contains("ticket revision", text);
+            Assert.DoesNotContain("private-command-marker", text);
+            Assert.Equal(0, preparations);
+            Assert.Null(shell.Failure);
+            Assert.Empty(progress.Validations.Summary(root).Validations);
+            Assert.Equal("denied", reports[^1].GetProperty("phase").GetString());
+            Assert.Equal(JsonValueKind.Null, reports[^1].GetProperty("exitCode").ValueKind);
+            Assert.DoesNotContain("private-command-marker", JsonSerializer.Serialize(reports));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
     public async Task Reporting_limit_announces_missing_telemetry_without_stopping_commands()
     {
         var root = Path.Combine(Path.GetTempPath(), "csweet-progress-" + Guid.NewGuid().ToString("N"));

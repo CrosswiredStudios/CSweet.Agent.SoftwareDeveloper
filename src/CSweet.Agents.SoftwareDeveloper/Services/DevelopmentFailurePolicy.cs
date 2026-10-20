@@ -18,7 +18,7 @@ internal static class DevelopmentFailurePolicy
     {
         for (Exception? current = exception; current is not null; current = current.InnerException)
         {
-            if (current is OperationalDevelopmentException or WorkspaceCommandTimeoutException or WorkspaceCheckpointException or ModelToolProtocolException or PlatformCapabilityException or
+            if (current is OperationalDevelopmentException or WorkspaceCommandPolicyException or WorkspaceCommandTimeoutException or WorkspaceCheckpointException or ModelToolProtocolException or PlatformCapabilityException or
                 UnauthorizedAccessException or HttpRequestException or IOException or TimeoutException)
                 return true;
         }

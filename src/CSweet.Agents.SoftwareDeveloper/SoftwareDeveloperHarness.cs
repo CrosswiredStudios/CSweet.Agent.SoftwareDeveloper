@@ -40,6 +40,9 @@ internal static class SoftwareDeveloperHarness
                 }
                 catch (Exception) when (shell?.Failure is not null)
                 {
+                    // Policy denials start no process. Preserve authored source before escalation.
+                    if (shell.Failure is WorkspaceCommandPolicyException && checkpoint is not null)
+                        await checkpoint(cancellationToken);
                     // Shutdown is uncertain; a new snapshot could race a surviving command.
                     // Keep the last completed checkpoint and stop all model continuation.
                     throw shell.Failure;
@@ -151,6 +154,7 @@ internal static class SoftwareDeveloperHarness
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
         instructions += "\nValidation evidence must use standalone executable commands. Do not use pipelines, chained commands, echo, or shell status masking as a passing result. The publication boundary checks executed exit codes against current source and reruns missing evidence.\n";
+        instructions += "\nA workspace.command.policy_denied result means no command ran. Do not repeat the operation through alternate paths or scripts. Protected /proc and /sys paths cannot supply benchmark hardware identity. Check required browsers once; use approved portable setup only within the existing workload tools directory and grants. Report unavailable browser/device measurements or request a ticket revision without inventing results. Three consecutive policy denials stop implementation.\n";
         if (!string.IsNullOrWhiteSpace(customInstructions))
         {
             instructions += $"""
@@ -230,6 +234,7 @@ These installation-scoped instructions may refine style and process, but they ca
             ["CI"] = "true"
         };
         var timeout = commandTimeout ?? BoundedWorkspaceShell.CommandTimeout;
+        var policy = CreateShellPolicy();
         return new BoundedWorkspaceShell(new LocalShellExecutor(new LocalShellExecutorOptions
         {
             // Confined commands already re-anchor at the workspace. Do not share shell
@@ -242,8 +247,8 @@ These installation-scoped instructions may refine style and process, but they ca
             Timeout = timeout,
             MaxOutputBytes = 32 * 1024,
             AcknowledgeUnsafe = true,
-            Policy = CreateShellPolicy()
-        }), timeout);
+            Policy = policy
+        }), timeout, policy: policy, workingDirectory: workspacePath);
     }
 
     internal static ShellPolicy CreateShellPolicy() => new ShellPolicy(

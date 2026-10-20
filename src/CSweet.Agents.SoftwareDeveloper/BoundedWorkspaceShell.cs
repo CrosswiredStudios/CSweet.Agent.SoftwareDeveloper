@@ -5,11 +5,13 @@ namespace CSweet.Agents.SoftwareDeveloper;
 
 // The framework timeout includes process shutdown and pipe draining, which can itself
 // hang. Bound that entire await independently, and never reuse an uncertain executor.
-internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeout, TimeSpan? cleanupGrace = null) : ShellExecutor
+internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeout, TimeSpan? cleanupGrace = null,
+    ShellPolicy? policy = null, string? workingDirectory = null) : ShellExecutor
 {
     internal static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
     private readonly TimeSpan _cleanupGrace = cleanupGrace ?? TimeSpan.FromSeconds(10);
-    internal WorkspaceCommandTimeoutException? Failure { get; private set; }
+    private int _consecutivePolicyDenials;
+    internal Exception? Failure { get; private set; }
     internal Action? StopOnFailure { get; set; }
     internal Func<string, CancellationToken, Task>? BeforeCommand { get; set; }
     internal CSweet.Agent.SDK.WorkloadResourceHandoffException? ResourceHandoff { get; private set; }
@@ -26,6 +28,17 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         if (Failure is { } failure) throw failure;
         if (ResourceHandoff is { } handoff) throw handoff;
         cancellationToken.ThrowIfCancellationRequested();
+        if (policy is not null && !policy.Evaluate(new ShellRequest(command, workingDirectory ?? string.Empty)).Allowed)
+        {
+            var denial = new WorkspaceCommandPolicyException(Interlocked.Increment(ref _consecutivePolicyDenials) >= 3);
+            if (denial.RecoveryExhausted)
+            {
+                Failure = denial;
+                StopOnFailure?.Invoke();
+            }
+            throw denial;
+        }
+        Interlocked.Exchange(ref _consecutivePolicyDenials, 0);
         if (BeforeCommand is not null)
         {
             try { await BeforeCommand(command, cancellationToken); }
@@ -69,9 +82,10 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
 
     private WorkspaceCommandTimeoutException Stop(bool uncertain)
     {
-        Failure = uncertain ? new WorkspaceCommandTerminationException() : new WorkspaceCommandTimeoutException();
+        var failure = uncertain ? new WorkspaceCommandTerminationException() : new WorkspaceCommandTimeoutException();
+        Failure = failure;
         StopOnFailure?.Invoke();
-        return Failure;
+        return failure;
     }
 
     public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true)
@@ -81,8 +95,14 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         return requireApproval ? new ApprovalRequiredAIFunction(function) : function;
     }
 
-    private async Task<string> RunForModelAsync(string command, CancellationToken token) =>
-        (await RunAsync(command, token)).FormatForModel();
+    private async Task<string> RunForModelAsync(string command, CancellationToken token)
+    {
+        try { return (await RunAsync(command, token)).FormatForModel(); }
+        catch (WorkspaceCommandPolicyException error) when (!error.RecoveryExhausted)
+        {
+            return error.Message;
+        }
+    }
 
     public override async ValueTask DisposeAsync()
     {
@@ -94,6 +114,18 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
             if (Failure is null && ResourceHandoff is null) throw Stop(true);
         }
     }
+}
+
+internal sealed class WorkspaceCommandPolicyException(bool recoveryExhausted) : InvalidOperationException(
+    "workspace.command.policy_denied: " + (recoveryExhausted
+        ? "Three consecutive commands were denied by the workspace policy; implementation has stopped. "
+        : "The workspace policy denied this command before execution. ") +
+    "No process was started and no exit code or validation result exists for this command. " +
+    "Protected system paths (/proc, /sys, /dev, /run/secrets), process/environment inspection, privileged commands and protected Git operations are unavailable. " +
+    "Do not retry the denied operation through another path, executable or script. Continue permitted workspace work. " +
+    "If required hardware/browser evidence is unavailable, report the precise measurement/setup gap to the manager or request a ticket revision; do not fabricate measurements or claim validation passed.")
+{
+    internal bool RecoveryExhausted { get; } = recoveryExhausted;
 }
 
 internal class WorkspaceCommandTimeoutException(bool uncertain = false) : Exception(

@@ -75,6 +75,13 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         var source = workspacePath is null ? null : WorkspaceValidation.SourceFingerprint(workspacePath);
         try { result = await shell.RunAsync(command, token); }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+        catch (WorkspaceCommandPolicyException error) when (!error.RecoveryExhausted)
+        {
+            await PublishAsync(operation, label, "denied", null, repeated, token);
+            // An expected denial is model-visible data, not an opaque function exception.
+            // No process ran, so do not manufacture an exit code or validation receipt.
+            return error.Message;
+        }
         catch
         {
             await PublishAsync(operation, label, "failed", null, repeated, token);
