@@ -276,7 +276,7 @@ internal sealed partial class AssignedDevelopmentService(
             new PublishGitWorkspaceRequest(
                 workspace.WorkspaceId,
                 assignmentRevision,
-                $"Implement {item.Title}",
+                GeneratedCommitMessage.Create(item.Title),
                 item.Title,
                 BuildPullRequestBody(item, outcome),
                 EventKey(operationId, "publish"),

@@ -123,7 +123,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
         }).RegisterCapability<PublishGitWorkspaceRequest, GitWorkspacePublication>(GitWorkspaceCapabilities.Publish, (request, _) =>
         {
             checkpoints++;
-            Assert.Equal("Complete Unit 1", request.CommitMessage);
+            Assert.Equal("feat(task): Unit 1", request.CommitMessage);
             Assert.Contains("Unit tested", request.ProposedChangeBody);
             Assert.Single(request.Validations!);
             return Task.FromResult(new GitWorkspacePublication(Guid.NewGuid(), workspaceId, Guid.NewGuid(),

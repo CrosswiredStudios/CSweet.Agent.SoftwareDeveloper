@@ -222,7 +222,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 {
                     currentStep = "Publishing the verified task checkpoint";
                     var checkpoint = await context.Platform.Git.PublishAsync(new(workspace.WorkspaceId, 1,
-                        "Complete " + planTask.Title, item.Title,
+                        GeneratedCommitMessage.Create(planTask.Title), item.Title,
                         $"Completed planned task: {planTask.Title}\n\n{completion.Outcome.Summary}",
                         prefix + $":checkpoint:{completion.TaskId:N}:{completion.TaskRevision}",
                         completion.Outcome.Validations.Select(x => new GitValidationResult(
@@ -272,7 +272,7 @@ Include README instructions and test coverage for the requested behavior. The pl
                 await ProgressAsync("Tests passed. Saving the source commit in C-Sweet.");
                 await context.Platform.Git.UploadAsync(workspace, 1, ct);
                 state = state with { Publication = await context.Platform.Git.PublishAsync(new(workspace.WorkspaceId, 1,
-                    "Implement " + item.Title, item.Title, state.Outcome.Summary, prefix + $":source:{state.RepairAttempt}",
+                    GeneratedCommitMessage.Create(item.Title), item.Title, state.Outcome.Summary, prefix + $":source:{state.RepairAttempt}",
                     state.Outcome.Validations.Select(x => new GitValidationResult(x.Command, x.Succeeded, x.ExitCode, x.DiagnosticExcerpt)).ToArray()), ct) };
                 await SaveAsync();
             }
