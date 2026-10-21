@@ -29,6 +29,42 @@ public sealed class NoChangeReworkTests
         AssignedDevelopmentService.PublishedCandidate(prior, Sha);
 
     [Fact]
+    public void Integrated_candidate_is_resubmitted_explicitly_without_pretending_it_is_a_new_publication()
+    {
+        var original = Published(new string('a', 40));
+        var merged = new WorkExecutionOutcomeV1(Guid.NewGuid(), Guid.NewGuid(), WorkExecutionDispositions.Completed,
+            "merged", "Integrated by the platform.", JsonSerializer.SerializeToElement(new { mergeCommitSha = Sha }), [], []);
+        var candidate = CandidateFrom(original, merged)!;
+        Assert.True(candidate.ResubmitsIntegratedCandidate);
+        Assert.Equal(Sha, candidate.CommitSha);
+        Assert.Equal(original.Output.GetProperty("RepositoryId").GetGuid(), candidate.RepositoryId);
+        var result = Assert.IsType<NoChangeReworkDecision.Resubmit>(AssignedDevelopmentService.DecideNoChangeRework(
+            "VG-23", [Qa("Legacy subject format.")],
+            Outcome(new FindingResolution("R1.1", FindingResolutionKinds.AlreadyResolved, "Current approved criteria explicitly exempt legacy ancestry.")),
+            candidate, Sha));
+        Assert.True(result.Candidate.ResubmitsIntegratedCandidate);
+        Assert.Empty(result.Candidate.ChangedFiles);
+        Assert.Single(result.Candidate.Validations);
+        Assert.True(JsonSerializer.SerializeToElement(result.Candidate).GetProperty("ResubmitsIntegratedCandidate").GetBoolean());
+    }
+
+    [Theory]
+    [InlineData("wrong-sha")]
+    [InlineData("no-publication")]
+    [InlineData("missing-evidence")]
+    [InlineData("latest-integration-changed")]
+    public void Integrated_recovery_does_not_guess_candidate_identity(string scenario)
+    {
+        var publication = Published(new string('a', 40), scenario != "missing-evidence");
+        var merged = new WorkExecutionOutcomeV1(Guid.NewGuid(), Guid.NewGuid(), WorkExecutionDispositions.Completed,
+            "merged", "Integrated.", JsonSerializer.SerializeToElement(new { mergeCommitSha = scenario == "wrong-sha" ? new string('b', 40) : Sha }), [], []);
+        var prior = scenario == "no-publication" ? new[] { merged } : new[] { publication, merged };
+        if (scenario == "latest-integration-changed")
+            prior = [.. prior, merged with { Output = JsonSerializer.SerializeToElement(new { mergeCommitSha = new string('d', 40) }) }];
+        Assert.Null(CandidateFrom(prior));
+    }
+
+    [Fact]
     public void Environment_blocked_findings_escalate_to_the_manager_with_the_decision_needed()
     {
         var feedback = new[] { Qa("AC-2 desktop Chrome fps has no measurement; no browser is available.", "Static checks pass.") };

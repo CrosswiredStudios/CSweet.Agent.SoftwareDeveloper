@@ -160,9 +160,23 @@ internal sealed partial class AssignedDevelopmentService
         (priorOutcomes ?? []).Count(prior => Publication(prior, commitSha) is not null);
 
     /// <summary>The latest development publication in this item execution whose commit is the unchanged workspace base.</summary>
-    internal static DevelopmentStageOutput? PublishedCandidate(IReadOnlyList<WorkExecutionOutcomeV1>? priorOutcomes, string baseCommitSha) =>
-        string.IsNullOrWhiteSpace(baseCommitSha) ? null :
-            (priorOutcomes ?? []).Reverse().Select(prior => Publication(prior, baseCommitSha)).FirstOrDefault(x => x is not null);
+    internal static DevelopmentStageOutput? PublishedCandidate(IReadOnlyList<WorkExecutionOutcomeV1>? priorOutcomes, string baseCommitSha)
+    {
+        if (string.IsNullOrWhiteSpace(baseCommitSha)) return null;
+        var outcomes = (priorOutcomes ?? []).ToArray();
+        var published = outcomes.Reverse().Select(prior => Publication(prior, baseCommitSha)).FirstOrDefault(candidate => candidate is not null);
+        if (published is not null) return published;
+        var integration = outcomes.LastOrDefault(prior => prior.Disposition == WorkExecutionDispositions.Completed && prior.OutcomeCode == "merged");
+        if (integration is null || integration.Output.ValueKind != JsonValueKind.Object ||
+            !integration.Output.TryGetProperty("mergeCommitSha", out var merged) || merged.ValueKind != JsonValueKind.String ||
+            !string.Equals(merged.GetString(), baseCommitSha, StringComparison.OrdinalIgnoreCase)) return null;
+        var author = outcomes.TakeWhile(prior => prior != integration).Reverse()
+            .Select(prior => prior.Output.ValueKind == JsonValueKind.Object &&
+                (prior.Output.TryGetProperty("CommitSha", out var commit) || prior.Output.TryGetProperty("commitSha", out commit)) &&
+                commit.ValueKind == JsonValueKind.String ? Publication(prior, commit.GetString()!) : null)
+            .FirstOrDefault(candidate => candidate is not null);
+        return author is null ? null : author with { CommitSha = baseCommitSha, ResubmitsIntegratedCandidate = true };
+    }
 
     /// <summary>A developer publication (not a review or QA result) of exactly this commit, with matching evidence.</summary>
     private static DevelopmentStageOutput? Publication(WorkExecutionOutcomeV1 prior, string commitSha)
@@ -188,6 +202,7 @@ internal sealed partial class AssignedDevelopmentService
     private static async Task RememberPublishedCandidateAsync(Guid itemId, long assignmentRevision,
         DevelopmentStageOutput output, Guid operationId, AgentRuntimeContext context, CancellationToken cancellationToken)
     {
+        if (output.ResubmitsIntegratedCandidate) return;
         var key = CandidateStateKey(itemId, assignmentRevision);
         try
         {

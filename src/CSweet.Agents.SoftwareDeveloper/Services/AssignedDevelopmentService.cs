@@ -251,6 +251,7 @@ internal sealed partial class AssignedDevelopmentService(
             // developer would: resubmit the same build with evidence, or ask the manager for a decision.
             var candidate = PublishedCandidate(priorOutcomes, workspace.BaseCommitSha) ??
                 await RecallPublishedCandidateAsync(boardId, item.Id, assignmentRevision, workspace, context, cancellationToken);
+            if (candidate?.RepositoryId != workspace.RepositoryId) candidate = null;
             switch (DecideNoChangeRework(itemIdentifier, reviewFeedback, outcome, candidate, workspace.BaseCommitSha,
                 CandidateSubmissions(priorOutcomes, workspace.BaseCommitSha), managerDirections.Count > 0))
             {

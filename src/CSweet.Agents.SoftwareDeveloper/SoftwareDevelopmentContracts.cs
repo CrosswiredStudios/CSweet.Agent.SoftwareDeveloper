@@ -9,7 +9,8 @@ public sealed record DevelopmentStageOutput(
     Uri? PullRequestUrl,
     string Summary,
     IReadOnlyList<string> ChangedFiles,
-    IReadOnlyList<SoftwareDevelopmentValidation> Validations);
+    IReadOnlyList<SoftwareDevelopmentValidation> Validations,
+    bool ResubmitsIntegratedCandidate = false);
 
 public sealed record SoftwareDevelopmentRequest(
     string? Objective,
