@@ -21,10 +21,12 @@ internal sealed partial class AssignedDevelopmentService
             { throw new OperationalDevelopmentException("Invalid prior review evidence.", error); }
             var commits = (outcome.Evidence ?? []).Where(x => x.Kind == "commit")
                 .Select(x => x.Value?.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-            var commit = payload?.CandidateCommitSha ?? payload?.SourceCommitSha;
+            var candidates = new[] { payload?.CandidateDigest, payload?.CandidateCommitSha, payload?.SourceCommitSha }
+                .Where(value => value is not null).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+            var commit = candidates.FirstOrDefault();
             var findings = payload?.Findings ?? outcome.Diagnostics;
             if (outcome.StageExecutionId == Guid.Empty || outcome.AttemptId == Guid.Empty ||
-                commit is null || commit.Length is not (40 or 64) || !commit.All(Uri.IsHexDigit) ||
+                candidates.Length != 1 || commit is null || commit.Length is not (40 or 64) || !commit.All(Uri.IsHexDigit) ||
                 commits.Length != 1 || !string.Equals(commits[0], commit, StringComparison.OrdinalIgnoreCase) ||
                 string.IsNullOrWhiteSpace(outcome.Summary) || findings is not { Count: > 0 and <= 64 } ||
                 findings.Any(x => string.IsNullOrWhiteSpace(x) || x.Length > 16000))
@@ -36,7 +38,7 @@ internal sealed partial class AssignedDevelopmentService
         return result;
     }
 
-    private sealed record ReviewFeedbackPayload(string? CandidateCommitSha, string? SourceCommitSha, IReadOnlyList<string>? Findings);
+    private sealed record ReviewFeedbackPayload(string? CandidateDigest, string? CandidateCommitSha, string? SourceCommitSha, IReadOnlyList<string>? Findings);
 }
 
 internal sealed record ReviewFeedback(Guid StageExecutionId, Guid AttemptId, string OutcomeCode,

@@ -42,6 +42,65 @@ public sealed class ReviewFeedbackTests
         Assert.Equal("Regression test failed.", Assert.Single(AssignedDevelopmentService.ReadReviewFeedback(Assignment(outcome))).Findings.Single());
     }
 
+    [Theory]
+    [InlineData("failed", true)]
+    [InlineData("failed", false)]
+    [InlineData("changes_requested", true)]
+    [InlineData("changes_requested", false)]
+    public void Canonical_qa_candidate_digest_preserves_findings_and_reaches_coding_prompt(string code, bool camelCase)
+    {
+        var report = new WorkDeliveryReviewResult(Sha, false, "Commit format needs review", [],
+            ["Legacy commit subjects require an explicit scope decision."]);
+        var outcome = Outcome(code) with
+        {
+            Output = JsonSerializer.SerializeToElement(report, new JsonSerializerOptions
+            { PropertyNamingPolicy = camelCase ? JsonNamingPolicy.CamelCase : null })
+        };
+        var feedback = AssignedDevelopmentService.ReadReviewFeedback(Assignment(outcome));
+        var entry = Assert.Single(feedback);
+        Assert.Equal(Sha, entry.SourceCommitSha);
+        Assert.Equal(outcome.StageExecutionId, entry.StageExecutionId);
+        Assert.Equal(outcome.AttemptId, entry.AttemptId);
+        Assert.Equal(report.Findings, entry.Findings);
+        var item = JsonSerializer.Deserialize<WorkItem>("{}")! with
+        { Development = new(Guid.NewGuid(), "linux", ["Preserve existing history"], ["Apply the approved legacy exception"]) };
+        var prompt = AssignedDevelopmentService.BuildAssignmentPrompt(Guid.NewGuid(), item, 1, reviewFeedback: feedback);
+        Assert.Contains(report.Findings.Single(), prompt);
+        Assert.Contains(Sha, prompt);
+        Assert.Contains("Apply the approved legacy exception", prompt);
+    }
+
+    [Fact]
+    public void Matching_canonical_and_legacy_commit_fields_are_supported()
+    {
+        var outcome = Outcome("failed") with { Output = JsonSerializer.SerializeToElement(new
+        { candidateDigest = Sha, candidateCommitSha = Sha.ToUpperInvariant(), sourceCommitSha = Sha,
+            findings = new[] { "Check the exact reviewed commit." } }) };
+        Assert.Equal(Sha, Assert.Single(AssignedDevelopmentService.ReadReviewFeedback(Assignment(outcome))).SourceCommitSha);
+    }
+
+    [Theory]
+    [InlineData("candidateCommitSha")]
+    [InlineData("sourceCommitSha")]
+    [InlineData("empty-canonical")]
+    [InlineData("malformed-canonical")]
+    [InlineData("missing-evidence")]
+    [InlineData("wrong-evidence")]
+    [InlineData("empty-findings")]
+    public void Canonical_qa_still_rejects_conflicting_or_incomplete_evidence(string fault)
+    {
+        var payload = new Dictionary<string, object>
+        { ["candidateDigest"] = Sha, ["findings"] = new[] { "Keep the exact-commit evidence." } };
+        if (fault is "candidateCommitSha" or "sourceCommitSha") payload[fault] = new string('b', 40);
+        if (fault == "empty-canonical") { payload["candidateDigest"] = ""; payload["sourceCommitSha"] = Sha; }
+        if (fault == "malformed-canonical") payload["candidateDigest"] = new string('z', 40);
+        if (fault == "empty-findings") payload["findings"] = Array.Empty<string>();
+        var outcome = Outcome("failed") with { Output = JsonSerializer.SerializeToElement(payload) };
+        if (fault == "missing-evidence") outcome = outcome with { Evidence = [] };
+        if (fault == "wrong-evidence") outcome = outcome with { Evidence = [new("commit", "Wrong", new string('b', 40))] };
+        Assert.Throws<OperationalDevelopmentException>(() => AssignedDevelopmentService.ReadReviewFeedback(Assignment(outcome)));
+    }
+
     [Fact]
     public void Unfinished_and_nonreview_outcomes_do_not_become_findings()
     {
