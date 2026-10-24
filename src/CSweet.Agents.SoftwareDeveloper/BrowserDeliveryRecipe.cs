@@ -3,6 +3,16 @@ namespace CSweet.Agents.SoftwareDeveloper;
 /// <summary>Small dependency-free serving recipe supplied as implementation guidance.</summary>
 internal static class BrowserDeliveryRecipe
 {
+    internal const string GuidanceReference = "A reusable browser serving/packaging recipe is available in .csweet/browser-delivery-recipe.md. " +
+        "Read it only if this ticket requires serving or packaging. Its examples do not add Dockerfiles, HTTP servers, deployment, or extra validation to the accepted ticket scope.";
+
+    internal static async Task PrepareGuidanceAsync(string workspacePath, CancellationToken token)
+    {
+        Directory.CreateDirectory(Path.Combine(workspacePath, ".csweet"));
+        await File.WriteAllTextAsync(Path.Combine(workspacePath, ".csweet", "browser-delivery-recipe.md"),
+            Guidance, new System.Text.UTF8Encoding(false), token);
+    }
+
     internal const string Server = """
         import http from 'node:http';
         import {readFile, realpath} from 'node:fs/promises';

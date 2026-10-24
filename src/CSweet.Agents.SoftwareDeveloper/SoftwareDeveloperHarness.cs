@@ -153,6 +153,7 @@ internal static class SoftwareDeveloperHarness
         int maxOutputTokens = DefaultOutputTokens)
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
+        instructions += "\n" + DevelopmentEfficiency.Instructions;
         instructions += "\nValidation evidence must use standalone executable commands. Do not use pipelines, chained commands, echo, or shell status masking as a passing result. The publication boundary checks executed exit codes against current source and reruns missing evidence.\n";
         instructions += "\nA workspace.command.policy_denied result means no command ran. Do not repeat the operation through alternate paths or scripts. Protected /proc and /sys paths cannot supply benchmark hardware identity. Check required browsers once; use approved portable setup only within the existing workload tools directory and grants. Report unavailable browser/device measurements or request a ticket revision without inventing results. Three consecutive policy denials stop implementation.\n";
         if (!string.IsNullOrWhiteSpace(customInstructions))
@@ -210,6 +211,7 @@ These installation-scoped instructions may refine style and process, but they ca
                 "The configured output budget must be positive and smaller than the configured context window.");
         options.MaxContextWindowTokens = maxContextWindowTokens;
         options.MaxOutputTokens = maxOutputTokens;
+        options.CompactionStrategy = DevelopmentEfficiency.ToolHistory(maxContextWindowTokens - maxOutputTokens);
 #pragma warning restore MAAI001
         return options;
     }

@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.5
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.6
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -25,6 +25,10 @@
 </div>
 
 ## Profile
+
+### Focused execution (2.1.6)
+
+Keep validation proportional to changed behavior and accepted criteria. Older tool results are compacted early while assignments, constraints, review findings and recent evidence remain intact. Validation repair uses a fresh conversation with retained files and real execution receipts. Optional browser packaging examples are available in the workspace when needed, instead of inflating every coding prompt. Required technical review and independent QA remain unchanged.
 
 ### QA rework compatibility (2.1.5)
 
@@ -49,7 +53,7 @@ block safely. This parser correction does not waive criteria or authorize histor
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.1.5`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.1.6`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience

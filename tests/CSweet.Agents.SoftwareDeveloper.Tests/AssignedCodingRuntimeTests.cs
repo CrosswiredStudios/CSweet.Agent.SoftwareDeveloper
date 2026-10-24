@@ -71,6 +71,7 @@ public sealed class AssignedCodingRuntimeTests
         public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
         {
             Assert.Equal("source snapshot", File.ReadAllText(Path.Combine(root, "README.md")));
+            Assert.Equal(BrowserDeliveryRecipe.Guidance, File.ReadAllText(Path.Combine(root, ".csweet", "browser-delivery-recipe.md")));
             Called = true;
             throw new InvalidOperationException("Stop at model boundary; no live inference in this test.");
         }
