@@ -53,7 +53,37 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         "execute_workspace_command",
         "Run an approved inspection, edit, restore, build, test, format, static-analysis, or local Git command inside the assignment workspace.");
 
-    internal async Task<string> RunShellAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
+    internal AIFunction ShellBatchTool(BoundedWorkspaceShell shell, Func<CancellationToken, Task> checkpoint) => AIFunctionFactory.Create(
+        (string[] commands, CancellationToken cancellationToken) => RunShellBatchAsync(shell, commands, checkpoint, cancellationToken),
+        "execute_workspace_commands",
+        "Run up to eight ordered standalone workspace commands in one call. Each has its own exit code, validation receipt and source checkpoint. Stops at the first failure or denial; no commands are replayed automatically.");
+
+    internal async Task<string> RunShellBatchAsync(BoundedWorkspaceShell shell, string[] commands,
+        Func<CancellationToken, Task> checkpoint, CancellationToken token)
+    {
+        if (commands.Length is < 1 or > 8 || commands.Any(command => !WorkspaceValidation.IsStandalone(command)))
+            return "No commands ran. Supply one to eight standalone executable commands without pipelines or chaining.";
+        var output = new StringBuilder();
+        for (var index = 0; index < commands.Length; index++)
+        {
+            token.ThrowIfCancellationRequested();
+            var result = await RunShellCoreAsync(shell, commands[index], token);
+            // Persist after each actual command, before the next command or inference can start.
+            await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
+            output.AppendLine($"Command {index + 1}: {commands[index]}").AppendLine(result.Output);
+            if (!result.Succeeded)
+            {
+                output.AppendLine($"Batch stopped; {commands.Length - index - 1} later commands did not run.");
+                break;
+            }
+        }
+        return output.ToString();
+    }
+
+    internal async Task<string> RunShellAsync(BoundedWorkspaceShell shell, string command, CancellationToken token) =>
+        (await RunShellCoreAsync(shell, command, token)).Output;
+
+    private async Task<(string Output, bool Succeeded)> RunShellCoreAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
     {
         var operation = Interlocked.Increment(ref _operations);
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command)));
@@ -80,7 +110,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
             await PublishAsync(operation, label, "denied", null, repeated, token);
             // An expected denial is model-visible data, not an opaque function exception.
             // No process ran, so do not manufacture an exit code or validation receipt.
-            return error.Message;
+            return (error.Message, false);
         }
         catch
         {
@@ -90,7 +120,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         await PublishAsync(operation, label, result.TimedOut ? "timed out" : result.ExitCode == 0 ? "succeeded" : "failed",
             result.ExitCode, repeated, token);
         if (source is not null) Validations.Record(command, result, source);
-        return result.FormatForModel();
+        return (result.FormatForModel(), !result.TimedOut && result.ExitCode == 0);
     }
 
     private async Task PublishAsync(int operation, string label, string phase, int? exitCode, int repeated, CancellationToken token, string? commandDigest = null)

@@ -6,6 +6,59 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class WorkspaceProgressTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Command_batch_retains_individual_receipts_and_checkpoints_before_each_next_command(bool fail)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-batch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            var checkpoints = 0;
+            var executor = new BatchExecutor((call, command) =>
+            {
+                Assert.Equal(call - 1, checkpoints);
+                return command == "npm test" && fail ? 1 : 0;
+            });
+            await using var shell = new BoundedWorkspaceShell(executor, TimeSpan.FromSeconds(1));
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance, workspacePath: root);
+            var result = await progress.RunShellBatchAsync(shell, ["npm ci", "npm test", "npm run check"],
+                _ => { checkpoints++; return Task.CompletedTask; }, default);
+            Assert.Equal(fail ? 2 : 3, executor.Calls);
+            Assert.Equal(executor.Calls, checkpoints);
+            Assert.Equal(executor.Calls, progress.Validations.Summary(root).Validations.Count);
+            if (fail) Assert.Contains("1 later commands did not run", result);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Batch_rejects_chaining_before_execution_and_stops_on_checkpoint_failure_or_cancellation()
+    {
+        var executor = new BatchExecutor((_, _) => 0);
+        await using var shell = new BoundedWorkspaceShell(executor, TimeSpan.FromSeconds(1));
+        var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance);
+        Assert.Contains("No commands ran", await progress.RunShellBatchAsync(shell, ["npm ci", "npm test || true"], _ => Task.CompletedTask, default));
+        Assert.Equal(0, executor.Calls);
+        await Assert.ThrowsAsync<WorkspaceCheckpointException>(() => progress.RunShellBatchAsync(shell, ["npm ci", "npm test"],
+            _ => throw new IOException("Snapshot unavailable"), default));
+        Assert.Equal(1, executor.Calls);
+        using var cancelled = new CancellationTokenSource();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => progress.RunShellBatchAsync(shell, ["npm ci", "npm test"],
+            _ => { cancelled.Cancel(); return Task.CompletedTask; }, cancelled.Token));
+        Assert.Equal(2, executor.Calls);
+    }
+
+    private sealed class BatchExecutor(Func<int, string, int> exit) : Microsoft.Agents.AI.Tools.Shell.ShellExecutor
+    {
+        internal int Calls;
+        public override Task<Microsoft.Agents.AI.Tools.Shell.ShellResult> RunAsync(string command, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new Microsoft.Agents.AI.Tools.Shell.ShellResult("output", "", exit(++Calls, command), TimeSpan.Zero, false));
+        public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
+        public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
+
     [Fact]
     public async Task Policy_denial_is_actionable_tool_data_without_execution_or_validation_receipts()
     {

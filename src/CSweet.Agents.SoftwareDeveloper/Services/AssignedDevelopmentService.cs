@@ -62,6 +62,13 @@ internal sealed partial class AssignedDevelopmentService(
             return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
         }
         catch (OperationCanceledException) { throw; }
+        catch (Exception error) when (DevelopmentTransport.IsTransient(error) ||
+            error is WorkspaceCheckpointException { InnerException: { } transport } && DevelopmentTransport.IsTransient(transport))
+        {
+            // The inbox/orchestrator owns bounded durable retry after in-process recovery is exhausted.
+            return AgentWorkResult.Failure("The platform connection was interrupted. Retained source can resume on retry.",
+                "runtime.transport", retryable: true);
+        }
         catch (TicketResponseRequiredException discussion)
         {
             return AgentWorkResult.Success(new WorkExecutionOutcomeV1(
@@ -187,7 +194,9 @@ internal sealed partial class AssignedDevelopmentService(
                 _settings.GetString("customInstructions"),
                 maxContextWindowTokens,
                 maxOutputTokens);
-        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), sizing.Tool(shell)];
+        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
+            token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
+                resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell)];
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken))));
         harness = discussion.AttachPauseGuard(harness);

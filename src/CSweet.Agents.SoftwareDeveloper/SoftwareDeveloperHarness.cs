@@ -16,12 +16,14 @@ internal static class SoftwareDeveloperHarness
         BoundedWorkspaceShell? shell = null)
     {
         const int maximumTurns = 6;
+        if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
         using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         if (shell is not null) shell.StopOnFailure = () => _ = checkpointCancellation.CancelAsync();
         var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, () => _ = checkpointCancellation.CancelAsync());
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
         var activeSession = session;
+        var transportRecoveries = 0;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
             AgentResponse response;
@@ -71,13 +73,15 @@ internal static class SoftwareDeveloperHarness
                 continue;
             }
             catch (Exception error) when (error is not OperationCanceledException &&
-                IsTransientTransportFailure(error) && turn < maximumTurns - 1)
+                IsTransientTransportFailure(error) && transportRecoveries < 2 && turn < maximumTurns - 1)
             {
                 // A streamed response can be interrupted after tool output has already changed
                 // the retained workspace. Do not fail the work item or replay the old model
                 // transcript; resume from the durable files with a bounded, clean session.
+                await Task.Delay(TimeSpan.FromSeconds(++transportRecoveries), cancellationToken);
                 activeSession = await harness.CreateSessionAsync(cancellationToken);
                 prompt = "The previous model transport was interrupted. Continue from the files already retained in this workspace. " +
+                    "Do not redo completed edits or passing checks unless source changed or required runtime dependencies need restoring. Finish the structured outcome promptly when the accepted criteria are satisfied. " +
                     "Do not inspect host paths. You may install project dependencies and portable tools under /run/csweet/workload/tools when runtime internet access is approved. Check a required runtime once with a bounded command, " +
                     "then restore dependencies and run the required validation. If installation is unavailable, record the exact infrastructure blocker and unexecuted checks; do not claim static checks satisfy runtime acceptance. " +
                     "Inspect the current source and .csweet state and write .csweet/outcome.json with only actual results.\n\n" +
@@ -131,18 +135,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static bool IsTransientTransportFailure(Exception error)
     {
-        if (error is WorkspaceCheckpointException) return false;
-        for (Exception? current = error; current is not null; current = current.InnerException)
-        {
-            if (current is HttpRequestException &&
-                (current.Message.Contains("copying content to a stream", StringComparison.OrdinalIgnoreCase) ||
-                 current.Message.Contains("response ended prematurely", StringComparison.OrdinalIgnoreCase) ||
-                 current.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)))
-                return true;
-            if (current is IOException)
-                return true;
-        }
-        return false;
+        return DevelopmentTransport.IsTransient(error);
     }
     internal static HarnessAgentOptions CreateOptions(
         string name,
@@ -185,7 +178,7 @@ These installation-scoped instructions may refine style and process, but they ca
                 ]
             },
 #pragma warning disable MAAI001
-            FileAccessStore = new FileSystemAgentFileStore(workspacePath),
+            FileAccessStore = new Utf8WorkspaceFileStore(workspacePath),
             // Assignment acceptance authorizes these operations in this confined store.
             // Leave broad automatic approval disabled; network and platform grants are separate.
             FileAccessProviderOptions = new()

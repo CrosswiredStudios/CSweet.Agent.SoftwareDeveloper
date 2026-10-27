@@ -123,7 +123,9 @@ internal sealed partial class PersonalDevelopmentService
                     _settings.GetString("customInstructions"),
                     _settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
                     _settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
-                options.ChatOptions!.Tools = [progress.ShellTool(shell), sizing.Tool(shell)];
+                options.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
+                    token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
+                        resumeSummary: progress.Validations.Summary(root))), sizing.Tool(shell)];
                 var harness = progress.Attach(client.AsHarnessAgent(options));
                 var session = await harness.CreateSessionAsync(ct);
                 try

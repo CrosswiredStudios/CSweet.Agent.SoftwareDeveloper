@@ -10,6 +10,85 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class HarnessExecutionTests
 {
+    [Fact]
+    public async Task File_tools_write_executable_scripts_and_json_without_an_implicit_BOM()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-encoding-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+#pragma warning disable MAAI001
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var store = SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null).FileAccessStore!;
+            await store.WriteAsync("package.json", "{\"name\":\"unicode-λ\"}");
+            await store.WriteAsync("check.mjs", "#!/usr/bin/env node\nconsole.log('λ');");
+            foreach (var path in new[] { "package.json", "check.mjs" })
+                Assert.False((await File.ReadAllBytesAsync(Path.Combine(root, path))).AsSpan().StartsWith(new byte[] { 239, 187, 191 }));
+            using var json = JsonDocument.Parse(await File.ReadAllBytesAsync(Path.Combine(root, "package.json")));
+            Assert.Equal("unicode-λ", json.RootElement.GetProperty("name").GetString());
+            await Assert.ThrowsAsync<ArgumentException>(() => store.WriteAsync("../escape.txt", "denied"));
+            await Assert.ThrowsAsync<ArgumentException>(() => store.WriteAsync(Path.Combine(root, "absolute.txt"), "denied"));
+#pragma warning restore MAAI001
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData(502)]
+    [InlineData(503)]
+    [InlineData(504)]
+    [InlineData(0)]
+    public async Task Gateway_loss_after_an_edit_resumes_from_checkpoint_without_repeating_the_edit(int status)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-gateway-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            Exception error = status == 0 ? new InvalidOperationException("The MCP service rejected the request: Bad Gateway") :
+                new HttpRequestException("Gateway unavailable", null, (System.Net.HttpStatusCode)status);
+            using var client = new InterruptedClient(true, error);
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null));
+            string? retained = null;
+            await SoftwareDeveloperHarness.RunImplementationAsync(harness, await harness.CreateSessionAsync(), "Implement", root,
+                default, async token => retained = await File.ReadAllTextAsync(Path.Combine(root, "partial.txt"), token));
+            Assert.Equal("Retain these edits", retained);
+            Assert.True(File.Exists(Path.Combine(root, ".csweet", "outcome.json")));
+            Assert.Equal(1, client.Edits);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    [Theory]
+    [InlineData(400)]
+    [InlineData(401)]
+    [InlineData(403)]
+    public void Authority_and_validation_failures_never_become_gateway_retries(int status)
+    {
+        Assert.False(DevelopmentTransport.IsTransient(new HttpRequestException("Bad Gateway", null, (System.Net.HttpStatusCode)status)));
+        Assert.False(DevelopmentTransport.IsTransient(new PlatformCapabilityException("work.item.read", PlatformCapabilityErrorCode.Denied,
+            "Bad Gateway", new IOException("connection lost"), retryable: true)));
+        Assert.False(DevelopmentTransport.IsTransient(new InvalidOperationException("The script printed Bad Gateway")));
+    }
+
+    [Fact]
+    public async Task Gateway_recovery_is_bounded_and_checkpoint_upload_retries_never_repeat_a_mutation()
+    {
+        var uploads = 0;
+        await WorkspaceCheckpoint.SaveAsync(_ => ++uploads < 3
+            ? Task.FromException(new HttpRequestException("Gateway", null, System.Net.HttpStatusCode.BadGateway))
+            : Task.CompletedTask, default);
+        Assert.Equal(3, uploads);
+        uploads = 0;
+        await Assert.ThrowsAsync<WorkspaceCheckpointException>(() => WorkspaceCheckpoint.SaveAsync(_ =>
+        { uploads++; throw new HttpRequestException("Gateway", null, System.Net.HttpStatusCode.BadGateway); }, default));
+        Assert.Equal(3, uploads);
+        using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => WorkspaceCheckpoint.SaveAsync(_ =>
+        { uploads++; return Task.CompletedTask; }, cancelled.Token));
+        Assert.Equal(3, uploads);
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -419,9 +498,10 @@ public sealed class HarnessExecutionTests
         finally { Directory.Delete(root, true); }
     }
 
-    private sealed class InterruptedClient(bool transient) : IChatClient
+    private sealed class InterruptedClient(bool transient, Exception? failure = null) : IChatClient
     {
         private int _calls;
+        internal int Edits;
         public void Dispose() { }
         public object? GetService(Type type, object? key = null) => null;
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
@@ -434,13 +514,17 @@ public sealed class HarnessExecutionTests
             var call = ++_calls;
             if (call == 2)
             {
+                if (failure is not null) throw failure;
                 if (transient) throw new HttpRequestException("The connection was interrupted.");
                 throw new InvalidOperationException("The inference provider has no model loaded.");
             }
             if (call is 1 or 3)
+            {
+                if (call == 1) Edits++;
                 yield return new(ChatRole.Assistant, [new FunctionCallContent("write-" + call, "file_access_write",
                     new Dictionary<string, object?> { ["fileName"] = call == 1 ? "partial.txt" : ".csweet/outcome.json",
                         ["content"] = call == 1 ? "Retain these edits" : "{}", ["overwrite"] = true })]);
+            }
             else yield return new(ChatRole.Assistant, "Complete.");
         }
     }

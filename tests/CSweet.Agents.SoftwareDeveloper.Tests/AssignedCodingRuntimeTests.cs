@@ -9,8 +9,10 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class AssignedCodingRuntimeTests
 {
-    [Fact]
-    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute(bool gateway)
     {
         var itemId = Guid.NewGuid(); var boardId = Guid.NewGuid(); var workspaceId = Guid.NewGuid();
         var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspaceId);
@@ -31,7 +33,7 @@ public sealed class AssignedCodingRuntimeTests
             ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid().ToString()),
             ["llmModel"] = JsonSerializer.SerializeToElement("test-model")
         });
-        var factory = new ReachedModelFactory(root);
+        var factory = new ReachedModelFactory(root, gateway);
         var runtime = new AgentTestRuntime()
             .RegisterCapability<WorkItemReference, WorkItem>(WorkManagementCapabilityNames.ItemRead, (_, _) => Task.FromResult(item))
             .RegisterCapability<ReadWorkItemCommentsRequest, WorkItemCommentPage>(WorkManagementCapabilityNames.ItemCommentsRead,
@@ -49,6 +51,14 @@ public sealed class AssignedCodingRuntimeTests
             var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRun,
                 JsonSerializer.SerializeToElement(assignment, new JsonSerializerOptions(JsonSerializerDefaults.Web))), runtime.CreateContext(), default);
             Assert.True(factory.Called);
+            if (gateway)
+            {
+                Assert.False(result.Succeeded);
+                Assert.True(result.Retryable);
+                Assert.Equal("runtime.transport", result.FailureCode);
+                Assert.Null(result.Value); // Infrastructure failure must not become a terminal Blocked disposition.
+                return;
+            }
             var outcome = result.Value!.Value.Deserialize<WorkExecutionOutcomeV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
             Assert.Equal(WorkExecutionDispositions.Blocked, outcome.Disposition);
             Assert.Contains("configured coding model is unavailable", outcome.Summary);
@@ -65,7 +75,7 @@ public sealed class AssignedCodingRuntimeTests
         return buffer.ToArray();
     }
 
-    private sealed class ReachedModelFactory(string root) : IAgentLlmClientFactory
+    private sealed class ReachedModelFactory(string root, bool gateway) : IAgentLlmClientFactory
     {
         internal bool Called;
         public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
@@ -73,6 +83,7 @@ public sealed class AssignedCodingRuntimeTests
             Assert.Equal("source snapshot", File.ReadAllText(Path.Combine(root, "README.md")));
             Assert.Equal(BrowserDeliveryRecipe.Guidance, File.ReadAllText(Path.Combine(root, ".csweet", "browser-delivery-recipe.md")));
             Called = true;
+            if (gateway) throw new InvalidOperationException("The MCP service rejected the request: Bad Gateway");
             throw new InvalidOperationException("Stop at model boundary; no live inference in this test.");
         }
     }
