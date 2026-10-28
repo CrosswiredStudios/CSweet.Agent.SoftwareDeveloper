@@ -22,6 +22,8 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         The controller reviews progress automatically after eight workspace operations; do not stop useful work
         to satisfy an operation counter. Use review_execution_progress when the current step or next action changes.
         New relevant source inspection is useful progress too. Slow inference is never a stall.
+        After sustained inspection, the controller may run existing verification scripts named in your plan.
+        Use their executed result to make the minimal repair or finish; do not keep polishing an untested helper.
         Do not add checks or rewrite passing helpers without a concrete defect or unmet accepted requirement.
         Probe required infrastructure once and make at most one approved setup attempt. If it remains unavailable,
         call report_infrastructure_blocker with the resource, observed command and recovery action. This preserves
@@ -32,6 +34,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     internal ExecutionPlan? Plan { get; private set; } = retained;
     internal Exception? Failure { get; private set; }
     internal Action? Stop { get; set; }
+    internal Func<ExecutionPlan, CancellationToken, Task<string?>>? VerifyPlannedSteps { get; set; }
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _commands = new(StringComparer.Ordinal);
     private readonly HashSet<string> _observedCommands = new(StringComparer.Ordinal);
@@ -39,6 +42,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     private readonly Dictionary<string, int> _edits = new(StringComparer.Ordinal);
     private int _operations, _stalledReviews, _newEvidence, _newContext;
     private string? _lastReview;
+    private int _reviewWindows;
     private string _source = WorkspaceValidation.SourceFingerprint(root);
 
     internal static async Task<DevelopmentWorkflow> LoadAsync(string root, string key, Guid source,
@@ -161,6 +165,9 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
 
     private async Task<string> EvaluateProgressAsync(CancellationToken token)
     {
+        string? verification = null;
+        if (++_reviewWindows % 2 == 0 && VerifyPlannedSteps is not null)
+            verification = await VerifyPlannedSteps(Plan!, token);
         var current = WorkspaceValidation.SourceFingerprint(root);
         var churn = _edits.Values.Any(n => n >= 4) && _newEvidence == 0;
         var progressed = current != _source || _newEvidence > 0 || _newContext > 0;
@@ -170,6 +177,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         await SaveAsync(token);
         _source = current; _operations = 0; _newEvidence = 0; _newContext = 0; _edits.Clear();
         if (_stalledReviews >= 2) throw Fail(new DevelopmentProgressException());
+        if (verification is not null) return verification + "\nAct on the first failing check, or finalize if all required checks now pass.";
         if (progressed && churn)
             return "Source progress observed, with repeated edits to one file and no new check evidence. Run the focused check for that change next; continue editing only for a concrete defect or unmet requirement. Finalize when required checks pass.";
         return progressed ? "Executed progress observed. Continue the next planned action; finalize when required checks pass."

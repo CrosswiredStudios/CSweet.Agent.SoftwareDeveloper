@@ -83,7 +83,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
     internal async Task<string> RunShellAsync(BoundedWorkspaceShell shell, string command, CancellationToken token) =>
         (await RunShellCoreAsync(shell, command, token)).Output;
 
-    private async Task<(string Output, bool Succeeded)> RunShellCoreAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
+    internal async Task<(string Output, bool Succeeded)> RunShellCoreAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
     {
         var operation = Interlocked.Increment(ref _operations);
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command)));

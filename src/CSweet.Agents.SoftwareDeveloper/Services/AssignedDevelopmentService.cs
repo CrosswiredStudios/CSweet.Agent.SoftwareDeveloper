@@ -197,6 +197,9 @@ internal sealed partial class AssignedDevelopmentService(
         var workflow = await DevelopmentWorkflow.LoadAsync(workspacePath,
             $"development/execution/{workspace.WorkspaceId:N}/{assignmentRevision}/{item.PlanningRevision}", item.Id, context, cancellationToken);
         shell.AfterCommand = workflow.ObserveCommandAsync;
+        workflow.VerifyPlannedSteps = (plan, token) => PlannedVerification.RunAsync(plan, workspacePath, progress, shell,
+            ct => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, ct,
+                resumeSummary: progress.Validations.Summary(workspacePath)), token);
         var harnessOptions = SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,

@@ -38,6 +38,9 @@ internal static class SoftwareDeveloperHarness
             {
                 try
                 {
+                    if (turn == 0 && workflow?.Plan is { } retained && workflow.VerifyPlannedSteps is { } verify &&
+                        await verify(retained, checkpointCancellation.Token) is { } results)
+                        prompt += "\nExisting retained verification executed before further inspection:\n" + results;
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
                     if (workflow?.Failure is { } workflowFailure) throw workflowFailure;
                     workflow?.EnsureCompletionReady();

@@ -122,6 +122,9 @@ internal sealed partial class PersonalDevelopmentService
                 var workflow = await DevelopmentWorkflow.LoadAsync(root,
                     $"development/execution/{workspace.WorkspaceId:N}/{planTask?.Id ?? item.Id:N}/{planTask?.Revision ?? 0}", item.Id, context, ct);
                 shell.AfterCommand = workflow.ObserveCommandAsync;
+                workflow.VerifyPlannedSteps = (execution, token) => PlannedVerification.RunAsync(execution, root, progress, shell,
+                    ct => context.Platform.Git.UploadCheckpointAsync(workspace, 1, ct,
+                        resumeSummary: progress.Validations.Summary(root)), token);
                 var options = SoftwareDeveloperHarness.CreateOptions(context.Identity?.DisplayName ?? "Daniel Kim", root, shell,
                     _settings.GetString("customInstructions"),
                     _settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),

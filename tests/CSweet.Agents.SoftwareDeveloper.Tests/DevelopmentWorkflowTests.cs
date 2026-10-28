@@ -186,6 +186,45 @@ public sealed class DevelopmentWorkflowTests
     }
 
     [Fact]
+    public async Task Sustained_inspection_executes_the_planned_verification_without_an_extra_model_turn()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var script = new List<FunctionCallContent> { Plan() };
+        for (var index = 0; index < 16; index++)
+        {
+            var path = "read-" + index + ".txt";
+            await File.WriteAllTextAsync(Path.Combine(workspace.Root, path), "existing source");
+            script.Add(Call("file_access_read", ("fileName", path)));
+        }
+        script.Add(Write(".csweet/outcome.json", "{}"));
+        var checks = 0;
+        var workflow = new DevelopmentWorkflow(workspace.Root)
+        {
+            VerifyPlannedSteps = (_, _) => { checks++; return Task.FromResult<string?>("Existing verification executed: exit 0"); }
+        };
+        using var client = new ScriptClient(script.ToArray());
+        await RunAsync(workspace.Root, workflow, client);
+        Assert.Equal(1, checks);
+        Assert.DoesNotContain("execute_workspace_command", client.Functions);
+        Assert.False(client.ProgressResumed);
+    }
+
+    [Fact]
+    public async Task Retained_plan_verification_precedes_the_first_model_response_on_recovery()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var workflow = new DevelopmentWorkflow(workspace.Root,
+            new ExecutionPlan(Steps, 0, "Repair existing check", "retained", null))
+        {
+            VerifyPlannedSteps = (_, _) => Task.FromResult<string?>("npm run verify:playfield: executed failure, missing entry point")
+        };
+        using var client = new ScriptClient([Write(".csweet/outcome.json", "{}")]);
+        await RunAsync(workspace.Root, workflow, client);
+        Assert.Contains("executed failure, missing entry point", client.InitialContext);
+        Assert.DoesNotContain("execute_workspace_command", client.Functions);
+    }
+
+    [Fact]
     public async Task Infrastructure_yield_retains_source_and_plan_and_resumes_in_a_fresh_workspace()
     {
         using var original = new TemporaryWorkspace();
