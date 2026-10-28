@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -1182,13 +1182,13 @@
     {
       "name": "platform.agent-operating-state.read.v1",
       "scope": "organization",
-      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "purpose": "Recover short execution plans and infrastructure handoffs for assigned and personal tickets, and retain direct software requests.",
       "modelVisible": false
     },
     {
       "name": "platform.agent-operating-state.write.v1",
       "scope": "organization",
-      "purpose": "Retain direct software requests, ask who creates tickets, and implement owned personal tickets in private C-Sweet repositories.",
+      "purpose": "Persist short execution plans and infrastructure handoffs for assigned and personal tickets, and retain direct software requests.",
       "modelVisible": false
     },
     {

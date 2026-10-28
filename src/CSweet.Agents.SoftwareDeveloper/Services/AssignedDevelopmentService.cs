@@ -61,6 +61,13 @@ internal sealed partial class AssignedDevelopmentService(
         {
             return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
         }
+        catch (Exception error) when (error is DevelopmentInfrastructureException or DevelopmentProgressException)
+        {
+            // The durable inbox owns bounded retry/backoff. Do not turn an environment gap or a stalled
+            // implementation loop into a completed stage, architecture request or terminal Blocked outcome.
+            return AgentWorkResult.Failure(error.Message,
+                error is DevelopmentInfrastructureException ? "development.infrastructure" : "development.progress", retryable: true);
+        }
         catch (OperationCanceledException) { throw; }
         catch (Exception error) when (DevelopmentTransport.IsTransient(error) ||
             error is WorkspaceCheckpointException { InnerException: { } transport } && DevelopmentTransport.IsTransient(transport))
@@ -187,6 +194,9 @@ internal sealed partial class AssignedDevelopmentService(
         // restoring dependencies into a VM that already needs replacement.
         await sizing.BeforeCommandAsync("build", cancellationToken);
         using var chatClient = await _chatClients.CreateAsync(context, cancellationToken);
+        var workflow = await DevelopmentWorkflow.LoadAsync(workspacePath,
+            $"development/execution/{workspace.WorkspaceId:N}/{assignmentRevision}/{item.PlanningRevision}", item.Id, context, cancellationToken);
+        shell.AfterCommand = workflow.ObserveCommandAsync;
         var harnessOptions = SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,
@@ -197,8 +207,8 @@ internal sealed partial class AssignedDevelopmentService(
         harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                 resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell)];
-        AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(discussion.Attach(
-            await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken))));
+        AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(workflow.Configure(discussion.Attach(
+            await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken)))));
         harness = discussion.AttachPauseGuard(harness);
 
         await context.ReportProgressAsync(
@@ -220,7 +230,7 @@ internal sealed partial class AssignedDevelopmentService(
                 workspacePath,
                 cancellationToken, token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                     resumeSummary: progress.Validations.Summary(workspacePath)),
-                () => discussion.Pending is not null, shell);
+                () => discussion.Pending is not null, shell, workflow);
         }
         catch (Exception error) when (error is not OperationCanceledException && discussion.Pending is not null)
         {
@@ -241,7 +251,7 @@ internal sealed partial class AssignedDevelopmentService(
                 "\nThe completion checks failed verification. Repair only the failed check or underlying defect; retain passing checks and all acceptance criteria. Do not expand the ticket into unrelated policy or fixture suites. " +
                 WorkspaceValidation.Guidance + "\n" + DevelopmentDiagnostics.FailedValidationSummary(failed),
                 workspacePath, token, ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct),
-                () => discussion.Pending is not null, shell);
+                () => discussion.Pending is not null, shell, workflow);
             if (discussion.Pending is { } waiting) throw new TicketResponseRequiredException(waiting);
             return await ReadCheckpointedOutcomeAsync(workspacePath,
                 ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token);

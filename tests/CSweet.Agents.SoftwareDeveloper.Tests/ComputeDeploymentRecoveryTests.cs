@@ -221,8 +221,20 @@ public sealed partial class ComputeDeploymentRecoveryTests
                 (request, _) => Task.FromResult(retainedWorkspace with { WorkItemId = request.TaskItemId ?? request.ItemId }))
                 .RegisterCapability<SubmitTaskReviewRequest, TaskReviewResult>(TaskDeliveryCapabilities.Submit, (request, _) =>
                     Task.FromResult(new TaskReviewResult(Guid.NewGuid(), request.TaskItemId, request.RootItemId, Guid.NewGuid(), "Task", "Task", [], new string('b', 40), "Merged", "NotAssigned", null, null, 1, 1)));
-            Runtime.RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead, (_, _) => Task.FromResult(new AgentOperatingStateReadResponse(State)))
+            var executionPlans = new Dictionary<string, AgentOperatingStateResponse>();
+            Runtime.RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(r.StateKey.StartsWith("development/execution/", StringComparison.Ordinal) ? executionPlans.GetValueOrDefault(r.StateKey) : State)))
                 .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite, (r, _) => {
+                    if (r.StateKey.StartsWith("development/execution/", StringComparison.Ordinal))
+                    {
+                        var previous = executionPlans.GetValueOrDefault(r.StateKey);
+                        Assert.Equal(previous?.Revision ?? 0, r.ExpectedRevision ?? 0);
+                        var saved = new AgentOperatingStateResponse(Guid.NewGuid(), r.StateKey, r.SchemaId, r.SchemaVersion, r.Status,
+                            r.SourceRevisions, r.ConditionCodes, r.DecisionFingerprint, r.OpenCommitmentCorrelations, r.AttentionReviewId,
+                            r.Payload, (previous?.Revision ?? 0) + 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+                        executionPlans[r.StateKey] = saved;
+                        return Task.FromResult(saved);
+                    }
                     Assert.Equal(State.Revision, r.ExpectedRevision); State = State with { Payload = r.Payload, Revision = State.Revision + 1 }; return Task.FromResult(State);
                 }).RegisterCapability<JsonElement, object>(CommunicationCapabilities.MessageSend, (r, _) => {
                     Sent.Add(r.GetProperty("content").GetString()!); return Task.FromResult<object>(new { id = Guid.NewGuid() });

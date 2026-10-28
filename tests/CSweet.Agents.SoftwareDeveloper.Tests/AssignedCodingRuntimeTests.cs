@@ -10,9 +10,10 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed class AssignedCodingRuntimeTests
 {
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute(bool gateway)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute(bool gateway, bool stalled)
     {
         var itemId = Guid.NewGuid(); var boardId = Guid.NewGuid(); var workspaceId = Guid.NewGuid();
         var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspaceId);
@@ -33,8 +34,10 @@ public sealed class AssignedCodingRuntimeTests
             ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid().ToString()),
             ["llmModel"] = JsonSerializer.SerializeToElement("test-model")
         });
-        var factory = new ReachedModelFactory(root, gateway);
+        var factory = new ReachedModelFactory(root, gateway, stalled);
         var runtime = new AgentTestRuntime()
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (_, _) => Task.FromResult(new AgentOperatingStateReadResponse(null)))
             .RegisterCapability<WorkItemReference, WorkItem>(WorkManagementCapabilityNames.ItemRead, (_, _) => Task.FromResult(item))
             .RegisterCapability<ReadWorkItemCommentsRequest, WorkItemCommentPage>(WorkManagementCapabilityNames.ItemCommentsRead,
                 (_, _) => Task.FromResult(new WorkItemCommentPage([], 1, 20, false, 1)))
@@ -51,12 +54,13 @@ public sealed class AssignedCodingRuntimeTests
             var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRun,
                 JsonSerializer.SerializeToElement(assignment, new JsonSerializerOptions(JsonSerializerDefaults.Web))), runtime.CreateContext(), default);
             Assert.True(factory.Called);
-            if (gateway)
+            if (gateway || stalled)
             {
                 Assert.False(result.Succeeded);
                 Assert.True(result.Retryable);
-                Assert.Equal("runtime.transport", result.FailureCode);
+                Assert.Equal(stalled ? "development.progress" : "runtime.transport", result.FailureCode);
                 Assert.Null(result.Value); // Infrastructure failure must not become a terminal Blocked disposition.
+                Assert.False(File.Exists(Path.Combine(root, "must-not-run.txt")));
                 return;
             }
             var outcome = result.Value!.Value.Deserialize<WorkExecutionOutcomeV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
@@ -75,7 +79,7 @@ public sealed class AssignedCodingRuntimeTests
         return buffer.ToArray();
     }
 
-    private sealed class ReachedModelFactory(string root, bool gateway) : IAgentLlmClientFactory
+    private sealed class ReachedModelFactory(string root, bool gateway, bool stalled) : IAgentLlmClientFactory
     {
         internal bool Called;
         public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
@@ -84,6 +88,9 @@ public sealed class AssignedCodingRuntimeTests
             Assert.Equal(BrowserDeliveryRecipe.Guidance, File.ReadAllText(Path.Combine(root, ".csweet", "browser-delivery-recipe.md")));
             Called = true;
             if (gateway) throw new InvalidOperationException("The MCP service rejected the request: Bad Gateway");
+            if (stalled) return Task.FromResult<IChatClient>(new DevelopmentWorkflowTests.ScriptClient(
+                Enumerable.Range(0, 3).Select(index => new FunctionCallContent("unplanned-" + index, "file_access_write",
+                    new Dictionary<string, object?> { ["fileName"] = "must-not-run.txt", ["content"] = "unplanned", ["overwrite"] = true })).ToArray()));
             throw new InvalidOperationException("Stop at model boundary; no live inference in this test.");
         }
     }

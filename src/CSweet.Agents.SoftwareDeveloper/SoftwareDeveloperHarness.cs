@@ -13,11 +13,17 @@ internal static class SoftwareDeveloperHarness
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
         Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null,
-        BoundedWorkspaceShell? shell = null)
+        BoundedWorkspaceShell? shell = null, DevelopmentWorkflow? workflow = null)
     {
         const int maximumTurns = 6;
         if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
         using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        if (workflow is not null)
+        {
+            workflow.Stop = () => _ = checkpointCancellation.CancelAsync();
+            harness = workflow.Attach(harness);
+            prompt += "\nExecution checkpoint (context only): " + workflow.ResumeContext;
+        }
         if (shell is not null) shell.StopOnFailure = () => _ = checkpointCancellation.CancelAsync();
         var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, () => _ = checkpointCancellation.CancelAsync());
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
@@ -32,9 +38,18 @@ internal static class SoftwareDeveloperHarness
                 try
                 {
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (workflow?.Failure is { } workflowFailure) throw workflowFailure;
+                    workflow?.EnsureCompletionReady();
                     if (shell?.ResourceHandoff is { } handoff) throw handoff;
                     if (shell?.Failure is { } shellFailure) throw shellFailure;
                     if (checkpoints?.Failure is { } checkpointFailure) throw checkpointFailure;
+                }
+                catch (Exception) when (workflow?.Failure is not null)
+                {
+                    // Only our linked inference token was stopped. Preserve source with the still-authorized
+                    // callback token before returning control; a revoked parent never starts another upload.
+                    if (checkpoint is not null) await checkpoint(cancellationToken);
+                    throw workflow.Failure;
                 }
                 catch (Exception) when (shell?.ResourceHandoff is not null)
                 {

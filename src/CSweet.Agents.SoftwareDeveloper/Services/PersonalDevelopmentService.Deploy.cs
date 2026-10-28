@@ -119,6 +119,9 @@ internal sealed partial class PersonalDevelopmentService
                 shell.BeforeCommand = sizing.BeforeCommandAsync;
                 await sizing.BeforeCommandAsync("build", ct);
                 using var client = await _chatClients.CreateAsync(context, ct);
+                var workflow = await DevelopmentWorkflow.LoadAsync(root,
+                    $"development/execution/{workspace.WorkspaceId:N}/{planTask?.Id ?? item.Id:N}/{planTask?.Revision ?? 0}", item.Id, context, ct);
+                shell.AfterCommand = workflow.ObserveCommandAsync;
                 var options = SoftwareDeveloperHarness.CreateOptions(context.Identity?.DisplayName ?? "Daniel Kim", root, shell,
                     _settings.GetString("customInstructions"),
                     _settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
@@ -126,7 +129,7 @@ internal sealed partial class PersonalDevelopmentService
                 options.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
                     token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
                         resumeSummary: progress.Validations.Summary(root))), sizing.Tool(shell)];
-                var harness = progress.Attach(client.AsHarnessAgent(options));
+                var harness = progress.Attach(client.AsHarnessAgent(workflow.Configure(options)));
                 var session = await harness.CreateSessionAsync(ct);
                 try
                 {
@@ -161,7 +164,7 @@ For a negative-path test, make the enclosing validation command exit 0 when the 
 induced child-process failure as a failed validation when the enclosing test passed.
 Include README instructions and test coverage for the requested behavior. The platform handles deployment.
 {{WorkspaceValidation.Guidance}}
-""", root, ct, token => context.Platform.Git.UploadAsync(workspace, 1, token), shell: shell);
+""", root, ct, token => context.Platform.Git.UploadAsync(workspace, 1, token), shell: shell, workflow: workflow);
 
                     DevelopmentWorkspaceService.ValidateMetadataPath(root);
                     outcome = await ImplementationOutcomeReader.ReadAsync(root, ct);
@@ -483,6 +486,11 @@ PY
             }
         }
         catch (OperationCanceledException) { throw; }
+        catch (Exception error) when (error is DevelopmentInfrastructureException or DevelopmentProgressException)
+        {
+            // Source and operating plan were saved before yielding. Do not consume code-repair attempts.
+            return Wait(error.Message);
+        }
         catch (PlatformCapabilityException error) when (
             error.Capability == PlatformCapabilities.LlmChatStream && error.Retryable == true)
         {
