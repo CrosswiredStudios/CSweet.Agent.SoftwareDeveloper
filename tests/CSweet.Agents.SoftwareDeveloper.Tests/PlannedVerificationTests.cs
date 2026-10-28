@@ -56,6 +56,30 @@ public sealed class PlannedVerificationTests
         new("Accepted source change", verification), new("Required runtime check", verification), new("Publish evidence", "Review actual results")],
         0, "Run the existing check", "source", null);
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Dependency_restore_invalidates_old_check_receipts_even_when_source_bytes_do_not_change(bool previouslyPassed)
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-check-restore-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "package.json"), """{"scripts":{"verify:playfield":"node browser.mjs"}}""");
+            var events = new List<string>();
+            await using var shell = new BoundedWorkspaceShell(new Executor(events, false), TimeSpan.FromMinutes(1));
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance, workspacePath: root);
+            var source = WorkspaceValidation.SourceFingerprint(root);
+            progress.Validations.Record("npm run verify:playfield", new ShellResult("", previouslyPassed ? "" : "missing phaser", previouslyPassed ? 0 : 1, TimeSpan.Zero, false), source);
+            await progress.RunShellCoreAsync(shell, "npm ci --no-audit --no-fund", default);
+            Assert.Equal(source, WorkspaceValidation.SourceFingerprint(root));
+            Assert.DoesNotContain(progress.Validations.Summary(root).Validations, receipt => receipt.Command == "npm run verify:playfield");
+            Assert.NotNull(await PlannedVerification.RunAsync(Plan("npm run verify:playfield"), root, progress, shell, _ => Task.CompletedTask, default));
+            Assert.Equal(new[] { "npm ci --no-audit --no-fund", "npm run verify:playfield" }, events);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private sealed class Executor(List<string> events, bool failFirst) : ShellExecutor
     {
         public override Task<ShellResult> RunAsync(string command, CancellationToken cancellationToken = default)

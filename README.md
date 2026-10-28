@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.10
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.11
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -53,7 +53,7 @@ block safely. This parser correction does not waive criteria or authorize histor
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.1.10`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.1.11`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -560,7 +560,7 @@ Denied shell commands return `workspace.command.policy_denied` with safe recover
 
 The confined execute_workspace_commands tool runs up to eight ordered standalone commands in one model turn. Each command retains its own exit code and validation receipt, checkpoints source before the next command, and stops the batch at its first failure or policy denial. File tools omit the implicit UTF-8 BOM. Gateway interruptions get two fresh-session recovery attempts from retained files; idempotent checkpoint uploads also receive bounded transport retry. Exhaustion is a retryable runtime.transport result for assigned work, while permission, cancellation and acceptance boundaries remain enforced. Install this version through published releases and Installed Agents before retrying retained work.
 
-## Planned execution and progress checkpoints (2.1.10)
+## Planned execution and progress checkpoints (2.1.11)
 
 DevelopmentWorkflow retains a three-to-five-step acceptance-linked plan for assigned and personal tickets. Initial file inspection is allowed before the plan; editing and shell execution require a plan. The current assignment and executed validation remain authoritative.
 
@@ -573,3 +573,5 @@ PreparedBrowserRuntime discovers Chromium in the certified development image cac
 Core parity, standalone package tests, technical review and independent QA remain required. No grants, token budgets or ticket deadlines change. The platform recognizes development.progress and development.infrastructure as explicit operational failures and honors its bounded retry budget before repeated-issue escalation.
 
 After two automatic review windows, PlannedVerification runs at most two existing npm verification scripts explicitly named in the short plan. It does not execute deployment/publish commands, invent checks, or rerun fresh script/alias receipts. Every actual command records its result and checkpoints before the next; the first failure stops that batch and is returned to the model for a focused repair. Executing a check never approves acceptance or removes review/QA.
+
+Successful dependency restoration invalidates previous validation receipts even when source/lock bytes do not change. The next planned check runs against restored runtime inputs; missing-module failures and earlier passes are not reused as current proof.

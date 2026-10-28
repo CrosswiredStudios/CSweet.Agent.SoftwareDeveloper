@@ -90,6 +90,14 @@ internal sealed class WorkspaceValidation
 
     internal void Record(string command, ShellResult result, string source)
     {
+        // Dependency directories are deliberately excluded from source snapshots/fingerprints.
+        // A successful restore changes runtime inputs even when lock/source bytes are identical.
+        // Keep audit history, but require fresh validation after those inputs change.
+        var words = command.Split([' ', '\t', '\r', '\n'], 3, StringSplitOptions.RemoveEmptyEntries);
+        if (!result.TimedOut && result.ExitCode == 0 && words.Length >= 2 &&
+            (words[0] is "npm" or "pnpm" or "yarn" or "bun" && words[1] is "ci" or "install" or "add" or "update" or "remove" ||
+             words[0] == "dotnet" && words[1] == "restore"))
+            _receipts.Clear();
         if (IsStandalone(command))
         {
             var diagnostic = result.ExitCode == 0 ? null : new string((result.Stderr + "\n" + result.Stdout)
