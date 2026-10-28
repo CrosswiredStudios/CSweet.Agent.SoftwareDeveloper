@@ -11,15 +11,33 @@ public sealed class DevelopmentWorkflowTests
     private static readonly ExecutionStep[] Steps = [new("Reuse pinned dependency", "Check pin"),
         new("Implement fixed playfield", "Required Chromium runtime check"), new("Publish verified source", "Executed receipts")];
 
+    [Theory]
+    [InlineData("chrome-headless-shell-linux64/chrome-headless-shell")]
+    [InlineData("chrome-linux/headless_shell")]
+    [InlineData("chrome-linux64/chrome")]
+    public async Task Prepared_certified_browser_is_discovered_without_a_network_install(string relative)
+    {
+        using var workspace = new TemporaryWorkspace();
+        var executable = Path.Combine(workspace.Root, "browsers", "chromium-1234", relative.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(executable)!);
+        await File.WriteAllTextAsync(executable, "prepared browser binary");
+        Assert.Null(PreparedBrowserRuntime.Discover(workspace.Root)); // An arbitrary folder is not a prepared image.
+        await File.WriteAllTextAsync(Path.Combine(workspace.Root, "versions.json"), "{}");
+        var browser = PreparedBrowserRuntime.Discover(workspace.Root);
+        Assert.Equal(executable, browser!.Executable);
+        Assert.Equal(Path.Combine(workspace.Root, "browsers"), browser.CachePath);
+    }
+
     [Fact]
-    public async Task Missing_plan_prevents_tools_and_cannot_be_ignored_indefinitely()
+    public async Task Initial_inspection_and_preplan_warnings_do_not_block_later_planned_edits()
     {
         using var workspace = new TemporaryWorkspace();
         var workflow = new DevelopmentWorkflow(workspace.Root);
-        using var client = new ScriptClient(Enumerable.Range(0, 5).Select(_ => Write("unplanned.txt", "must not run")).ToArray());
-        await Assert.ThrowsAsync<DevelopmentProgressException>(() => RunAsync(workspace.Root, workflow, client));
+        using var client = new ScriptClient([Read(), Read(), Write("unplanned.txt", "must not run"),
+            Write("unplanned.txt", "must not run"), Plan(), Write("planned.txt", "implemented"), Write(".csweet/outcome.json", "{}")]);
+        await RunAsync(workspace.Root, workflow, client);
         Assert.False(File.Exists(Path.Combine(workspace.Root, "unplanned.txt")));
-        Assert.Equal(3, client.Calls);
+        Assert.Equal("implemented", await File.ReadAllTextAsync(Path.Combine(workspace.Root, "planned.txt")));
     }
 
     [Fact]
@@ -49,7 +67,7 @@ public sealed class DevelopmentWorkflowTests
     {
         using var workspace = new TemporaryWorkspace();
         var script = new List<FunctionCallContent> { Plan() };
-        for (var window = 0; window < 2; window++)
+        for (var window = 0; window < 10; window++)
         {
             for (var operation = 0; operation < 8; operation++)
                 script.Add(churn ? Write("source.txt", operation % 2 == 0 ? "temporary helper rewrite" : "original") : Read());
@@ -63,7 +81,7 @@ public sealed class DevelopmentWorkflowTests
         await Assert.ThrowsAsync<DevelopmentProgressException>(() => RunAsync(workspace.Root, workflow, client,
             async token => checkpoint = await File.ReadAllTextAsync(Path.Combine(workspace.Root, "source.txt"), token)));
         Assert.Equal("original", checkpoint);
-        Assert.Equal(3, savedPlans.Count);
+        Assert.True(savedPlans.Count >= 3);
         Assert.False(File.Exists(Path.Combine(workspace.Root, ".csweet/outcome.json")));
     }
 
@@ -90,7 +108,7 @@ public sealed class DevelopmentWorkflowTests
     {
         using var workspace = new TemporaryWorkspace();
         var script = new List<FunctionCallContent> { Plan() };
-        for (var window = 0; window < 3; window++)
+        for (var window = 0; window < (novel ? 3 : 10); window++)
         {
             for (var operation = 0; operation < 8; operation++)
                 script.Add(Call("execute_workspace_command", ("command", novel ? $"node check-{window}-{operation}.mjs" : "node check.mjs")));
@@ -108,11 +126,63 @@ public sealed class DevelopmentWorkflowTests
     {
         using var workspace = new TemporaryWorkspace();
         var script = new List<FunctionCallContent> { Plan() };
-        for (var operation = 0; operation < 9; operation++) { script.Add(Read()); script.Add(Review()); }
-        for (var operation = 0; operation < 8; operation++) script.Add(Read());
-        script.Add(Review());
+        for (var operation = 0; operation < 96; operation++) { script.Add(Read()); script.Add(Review()); }
         using var client = new ScriptClient(script.ToArray());
         await Assert.ThrowsAsync<DevelopmentProgressException>(() => RunAsync(workspace.Root, new(workspace.Root), client));
+    }
+
+    [Fact]
+    public async Task Automatic_progress_checkpoint_recovers_in_process_without_failing_the_ticket_or_replaying_edits()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var script = new List<FunctionCallContent> { Plan(), Write("source.txt", "retained implementation") };
+        for (var index = 0; index < 24; index++) script.Add(Read());
+        script.Add(Write(".csweet/outcome.json", "{}"));
+        using var client = new ScriptClient(script.ToArray());
+        var saves = 0;
+        await RunAsync(workspace.Root, new(workspace.Root), client, _ => { saves++; return Task.CompletedTask; });
+        Assert.True(client.ProgressResumed);
+        Assert.True(saves >= 2);
+        Assert.Equal("retained implementation", await File.ReadAllTextAsync(Path.Combine(workspace.Root, "source.txt")));
+        Assert.Equal(2, client.Functions.Count(x => x == "file_access_write"));
+    }
+
+    [Fact]
+    public async Task Reading_new_source_files_across_windows_is_useful_progress_without_explicit_review_calls()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var script = new List<FunctionCallContent> { Plan() };
+        for (var index = 0; index < 32; index++)
+        {
+            var path = "existing-" + index + ".txt";
+            await File.WriteAllTextAsync(Path.Combine(workspace.Root, path), "retained source");
+            script.Add(Call("file_access_read", ("fileName", path)));
+        }
+        script.Add(Write("source.txt", "fixed"));
+        script.Add(Write(".csweet/outcome.json", "{}"));
+        using var client = new ScriptClient(script.ToArray());
+        await RunAsync(workspace.Root, new(workspace.Root), client);
+        Assert.False(client.ProgressResumed);
+        Assert.Equal("fixed", await File.ReadAllTextAsync(Path.Combine(workspace.Root, "source.txt")));
+    }
+
+    [Fact]
+    public async Task Parallel_inspection_batches_can_cross_progress_boundaries_without_rejected_calls()
+    {
+        using var workspace = new TemporaryWorkspace();
+        var script = new List<FunctionCallContent> { Plan() };
+        for (var index = 0; index < 24; index++)
+        {
+            var path = "batch-" + index + ".txt";
+            await File.WriteAllTextAsync(Path.Combine(workspace.Root, path), "existing source");
+            script.Add(Call("file_access_read", ("fileName", path)));
+        }
+        script.Add(Write("source.txt", "fixed after inspection"));
+        script.Add(Write(".csweet/outcome.json", "{}"));
+        using var client = new ScriptClient(script.ToArray(), parallelWidth: 12);
+        await RunAsync(workspace.Root, new(workspace.Root), client);
+        Assert.False(client.ProgressResumed);
+        Assert.Equal("fixed after inspection", await File.ReadAllTextAsync(Path.Combine(workspace.Root, "source.txt")));
     }
 
     [Fact]
@@ -234,12 +304,14 @@ public sealed class DevelopmentWorkflowTests
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    internal sealed class ScriptClient(FunctionCallContent[] script) : IChatClient
+    internal sealed class ScriptClient(FunctionCallContent[] script, int parallelWidth = 1) : IChatClient
     {
         internal int Calls;
         private int _index;
         private bool _pending;
+        private int _pendingCount;
         internal string InitialContext = "";
+        internal bool ProgressResumed;
         internal List<string> Functions { get; } = [];
         public object? GetService(Type serviceType, object? serviceKey = null) => null;
         public void Dispose() { }
@@ -249,14 +321,18 @@ public sealed class DevelopmentWorkflowTests
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.Yield();
+            ProgressResumed |= messages.Any(m => m.Role == ChatRole.User && m.Text.Contains("after an automatic progress checkpoint", StringComparison.Ordinal));
             if (Calls == 0) InitialContext = string.Join("\n", messages.Select(m => m.Text));
             Calls++;
-            if (_pending && messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Any(r => r.CallId == script[_index].CallId))
-            { _index++; _pending = false; }
+            var results = messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().Select(r => r.CallId).ToHashSet();
+            if (_pending && script.Skip(_index).Take(_pendingCount).All(call => results.Contains(call.CallId)))
+            { _index += _pendingCount; _pending = false; }
             if (_index >= script.Length) { yield return new(ChatRole.Assistant, "Complete"); yield break; }
-            Functions.Add(script[_index].Name);
+            var calls = script.Skip(_index).Take(parallelWidth).ToArray();
+            Functions.AddRange(calls.Select(call => call.Name));
             _pending = true;
-            yield return new(ChatRole.Assistant, [script[_index]]);
+            _pendingCount = calls.Length;
+            yield return new(ChatRole.Assistant, calls.Cast<AIContent>().ToArray());
         }
     }
 }

@@ -17,19 +17,20 @@ internal static class SoftwareDeveloperHarness
     {
         const int maximumTurns = 6;
         if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
-        using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        using var checkpointCancellation = new ImplementationCancellation(cancellationToken);
         if (workflow is not null)
         {
-            workflow.Stop = () => _ = checkpointCancellation.CancelAsync();
+            workflow.Stop = checkpointCancellation.Stop;
             harness = workflow.Attach(harness);
             prompt += "\nExecution checkpoint (context only): " + workflow.ResumeContext;
         }
-        if (shell is not null) shell.StopOnFailure = () => _ = checkpointCancellation.CancelAsync();
-        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, () => _ = checkpointCancellation.CancelAsync());
+        if (shell is not null) shell.StopOnFailure = checkpointCancellation.Stop;
+        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, checkpointCancellation.Stop);
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
         var activeSession = session;
         var transportRecoveries = 0;
+        var progressRecoveries = 0;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
             AgentResponse response;
@@ -75,6 +76,21 @@ internal static class SoftwareDeveloperHarness
                     if (checkpoint is not null) await checkpoint(cancellationToken);
                     throw;
                 }
+            }
+            catch (DevelopmentProgressException) when (workflow is not null && progressRecoveries < 2 && turn < maximumTurns - 1)
+            {
+                // A controller checkpoint is an internal scheduling event, not a failed ticket attempt.
+                // Source was saved above. Keep novelty evidence, discard the expanding transcript,
+                // and give the model a bounded fresh session before involving platform retry policy.
+                progressRecoveries++;
+                workflow.ResumeAfterProgressCheckpoint();
+                checkpointCancellation.Reset();
+                activeSession = await harness.CreateSessionAsync(cancellationToken);
+                prompt = "Resume the retained implementation after an automatic progress checkpoint. " +
+                    "Do not repeat inspected files or unchanged checks. Complete the next concrete edit/check, or report the actual infrastructure blocker. " +
+                    "New relevant inspection and slow inference are permitted; no explicit review-tool call is required.\n" +
+                    workflow.ResumeContext + "\nOriginal assignment:\n" + assignmentPrompt;
+                continue;
             }
             catch (Exception error) when (error is not OperationCanceledException &&
                 IsContextCapacityFailure(error) && turn < maximumTurns - 1)
@@ -134,6 +150,15 @@ internal static class SoftwareDeveloperHarness
         throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after six bounded continuation attempts. Source files remain in the workspace; deployment has not started.");
     }
 
+    private sealed class ImplementationCancellation(CancellationToken parent) : IDisposable
+    {
+        private CancellationTokenSource _current = CancellationTokenSource.CreateLinkedTokenSource(parent);
+        internal CancellationToken Token => _current.Token;
+        internal void Stop() { try { _ = _current.CancelAsync(); } catch (ObjectDisposedException) { } }
+        internal void Reset() { _current.Dispose(); _current = CancellationTokenSource.CreateLinkedTokenSource(parent); }
+        public void Dispose() => _current.Dispose();
+    }
+
     internal static bool IsContextCapacityFailure(Exception error)
     {
         if (error is WorkspaceCheckpointException) return false;
@@ -162,6 +187,7 @@ internal static class SoftwareDeveloperHarness
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
         instructions += "\n" + DevelopmentEfficiency.Instructions;
+        instructions += "\n" + PreparedBrowserRuntime.Guidance;
         instructions += "\nValidation evidence must use standalone executable commands. Do not use pipelines, chained commands, echo, or shell status masking as a passing result. The publication boundary checks executed exit codes against current source and reruns missing evidence.\n";
         instructions += "\nA workspace.command.policy_denied result means no command ran. Do not repeat the operation through alternate paths or scripts. Protected /proc and /sys paths cannot supply benchmark hardware identity. Check required browsers once; use approved portable setup only within the existing workload tools directory and grants. Report unavailable browser/device measurements or request a ticket revision without inventing results. Three consecutive policy denials stop implementation.\n";
         if (!string.IsNullOrWhiteSpace(customInstructions))
@@ -243,6 +269,7 @@ These installation-scoped instructions may refine style and process, but they ca
             ["NO_PROXY"] = Environment.GetEnvironmentVariable("NO_PROXY"),
             ["CI"] = "true"
         };
+        PreparedBrowserRuntime.Configure(environment);
         var timeout = commandTimeout ?? BoundedWorkspaceShell.CommandTimeout;
         var policy = CreateShellPolicy();
         return new BoundedWorkspaceShell(new LocalShellExecutor(new LocalShellExecutorOptions

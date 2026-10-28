@@ -19,8 +19,9 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         Use this single short plan; do not maintain another parallel todo list or start a planning-agent round trip.
         Reuse a retained plan. It is context, not authority or proof: current ticket scope and executed checks win.
         Implement the plan, run the smallest required checks, then write the outcome and return control.
-        Every eight workspace operations, review_execution_progress is required. Describe the next concrete action;
-        the controller checks actual source changes and command results. Slow inference is never a stall.
+        The controller reviews progress automatically after eight workspace operations; do not stop useful work
+        to satisfy an operation counter. Use review_execution_progress when the current step or next action changes.
+        New relevant source inspection is useful progress too. Slow inference is never a stall.
         Do not add checks or rewrite passing helpers without a concrete defect or unmet accepted requirement.
         Probe required infrastructure once and make at most one approved setup attempt. If it remains unavailable,
         call report_infrastructure_blocker with the resource, observed command and recovery action. This preserves
@@ -34,8 +35,10 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _commands = new(StringComparer.Ordinal);
     private readonly HashSet<string> _observedCommands = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _inspections = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _edits = new(StringComparer.Ordinal);
-    private int _operations, _ignoredReviews, _stalledReviews, _newEvidence;
+    private int _operations, _stalledReviews, _newEvidence, _newContext;
+    private string? _lastReview;
     private string _source = WorkspaceValidation.SourceFingerprint(root);
 
     internal static async Task<DevelopmentWorkflow> LoadAsync(string root, string key, Guid source,
@@ -78,6 +81,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     internal string ResumeContext => JsonSerializer.Serialize(new
     {
         plan = Plan,
+        progress = _lastReview,
         instruction = "Retained plan is context only. Inspect retained files, recheck previously unavailable infrastructure once, and resume unfinished work. Revalidate current source before publication."
     });
 
@@ -89,6 +93,14 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
             throw Fail(new DevelopmentInfrastructureException());
     }
 
+    internal void ResumeAfterProgressCheckpoint()
+    {
+        if (Failure is not DevelopmentProgressException) throw new InvalidOperationException("Only a progress checkpoint can resume in process.");
+        Failure = null;
+        _operations = 0; _stalledReviews = 0; _newEvidence = 0; _newContext = 0;
+        _source = WorkspaceValidation.SourceFingerprint(root);
+    }
+
     private async ValueTask<object?> InvokeAsync(AIAgent agent, FunctionInvocationContext invocation,
         Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>> next, CancellationToken token)
     {
@@ -97,21 +109,27 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         {
             if (Failure is { } failure) throw failure;
             var name = invocation.Function.Name;
-            var control = name is "record_execution_plan" or "review_execution_progress" or "report_infrastructure_blocker";
             var workspace = name.StartsWith("file_access_", StringComparison.Ordinal) || name is "execute_workspace_command" or "execute_workspace_commands";
-            if (!control && workspace && (Plan is null || _operations >= 8))
+            var inspection = name is "file_access_read" or "file_access_ls" or "file_access_grep";
+            if (workspace && !inspection && Plan is null)
             {
-                if (++_ignoredReviews >= 3) throw Fail(new DevelopmentProgressException());
-                return Plan is null ? "No operation ran. First call record_execution_plan with three to five acceptance-linked steps."
-                    : "No operation ran. Call review_execution_progress before more workspace work. Report the next concrete action; do not expand the ticket.";
+                // A plan protects edits; initial inspection is allowed. Never turn several calls
+                // from one parallel model response into several ignored warnings or a terminal failure.
+                return "No edit/command ran. First call record_execution_plan with three to five acceptance-linked steps. File inspection is available before planning.";
             }
             var result = await next(invocation, token);
             if (workspace)
             {
                 _operations++;
+                if (inspection && _inspections.Add(name + ":" + JsonSerializer.Serialize(invocation.Arguments))) _newContext++;
                 if (name is "file_access_write" or "file_access_replace" or "file_access_replace_lines" or "file_access_delete" &&
                     invocation.Arguments.TryGetValue("fileName", out var path) && path is string file)
                     _edits[file] = _edits.GetValueOrDefault(file) + 1;
+                if (Plan is not null && _operations >= 8)
+                {
+                    var note = await EvaluateProgressAsync(token);
+                    result = result is string text ? text + "\n\n[Execution progress] " + note : new { result, executionProgress = note };
+                }
             }
             if (Failure is { } pending) throw pending;
             return result;
@@ -126,29 +144,36 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         if (!ValidSteps(steps))
             return "Supply three to five steps, each with a requirement and verification of 1–400 characters.";
         Plan = new(steps, 0, "Inspect required infrastructure and retained source", _source, null);
+        _operations = 0; _stalledReviews = 0; _newEvidence = 0; _newContext = 0;
         await SaveAsync(token);
         return "Plan retained. Implement only accepted scope; completion still requires executed validation.";
     }
 
-    [Description("Review progress after at most eight workspace operations. Supply current step (zero based) and the concrete next action. Actual execution evidence governs continuation.")]
+    [Description("Update the current step (zero based) and concrete next action when they change. Progress checks run automatically; this tool is not an admission gate or acceptance proof.")]
     internal async Task<string> ReviewAsync(int step, string nextAction, CancellationToken token)
     {
         if (Plan is null) return "Record the short execution plan first.";
         if (step < 0 || step >= Plan.Steps.Length || !Valid(nextAction, 600)) return "Supply a valid step and a concrete next action of 1–600 characters.";
+        Plan = Plan with { CurrentStep = step, NextAction = nextAction.Trim() };
+        await SaveAsync(token);
+        return "Next action retained. Automatic progress checks do not require another review-tool call or treat todo status as executed evidence.";
+    }
+
+    private async Task<string> EvaluateProgressAsync(CancellationToken token)
+    {
         var current = WorkspaceValidation.SourceFingerprint(root);
         var churn = _edits.Values.Any(n => n >= 4) && _newEvidence == 0;
-        var progressed = current != _source || _newEvidence > 0;
-        // Early voluntary reviews cannot erase an outstanding window or manufacture progress.
-        if (_operations < 8) return "Continue the current window; reviewing early does not reset its operation count.";
+        var progressed = current != _source || _newEvidence > 0 || _newContext > 0;
         _stalledReviews = progressed ? 0 : _stalledReviews + 1;
-        Plan = Plan with { CurrentStep = step, NextAction = nextAction.Trim(), SourceFingerprint = current };
+        _lastReview = $"Workspace operations: {_operations}; new inspections: {_newContext}; new command/check results: {_newEvidence}; source changed: {current != _source}.";
+        Plan = Plan! with { SourceFingerprint = current };
         await SaveAsync(token);
-        _source = current; _operations = 0; _ignoredReviews = 0; _newEvidence = 0; _edits.Clear();
+        _source = current; _operations = 0; _newEvidence = 0; _newContext = 0; _edits.Clear();
         if (_stalledReviews >= 2) throw Fail(new DevelopmentProgressException());
         if (progressed && churn)
             return "Source progress observed, with repeated edits to one file and no new check evidence. Run the focused check for that change next; continue editing only for a concrete defect or unmet requirement. Finalize when required checks pass.";
         return progressed ? "Executed progress observed. Continue the next planned action; finalize when required checks pass."
-            : "No new source/check evidence. Focus the next window on the unmet requirement or concrete failure. Reuse passing work; report infrastructure gaps instead of probing again.";
+            : "No new source, check or inspection evidence. Focus the next window on the unmet requirement or concrete failure. Reuse passing work; report infrastructure gaps instead of probing again.";
     }
 
     internal async Task ObserveCommandAsync(string command, ShellResult result, CancellationToken token)
@@ -162,6 +187,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
                 command + "\n" + WorkspaceValidation.SourceFingerprint(root) + "\n" + result.ExitCode)));
             if (_commands.Add(digest)) _newEvidence++;
         }
+        else if (_inspections.Add("command:" + command + "\n" + result.ExitCode)) _newContext++;
         // A retained infrastructure gap is cleared only by a successful execution of its recorded probe/check,
         // never by changing a todo status. Publication still verifies the full acceptance evidence separately.
         if (Plan?.Blocker?.Command == command && result.ExitCode == 0 && !result.TimedOut)
