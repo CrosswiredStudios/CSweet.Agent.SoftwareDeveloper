@@ -191,6 +191,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
 
     private sealed class PlannedClient(int phase) : IChatClient
     {
+        private bool _planned;
         private int _turn;
         private int _planningTurn;
         public void Dispose() { }
@@ -220,6 +221,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             await Task.Yield();
             var text = string.Join(" ", messages.Select(x => x.Text));
             Assert.Contains("Implement ONLY this planned task now: Unit " + (phase - 1), text);
+            if (!_planned) { _planned = true; yield return new(ChatRole.Assistant, [DevelopmentWorkflowTests.Plan()]); yield break; }
             var turn = ++_turn;
             if (phase > 3) { yield return new(ChatRole.Assistant, "I will work on it."); yield break; }
             if (turn <= 2)

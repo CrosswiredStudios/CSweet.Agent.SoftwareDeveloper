@@ -14,6 +14,7 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
     internal Exception? Failure { get; private set; }
     internal Action? StopOnFailure { get; set; }
     internal Func<string, CancellationToken, Task>? BeforeCommand { get; set; }
+    internal Func<string, ShellResult, CancellationToken, Task>? AfterCommand { get; set; }
     internal CSweet.Agent.SDK.WorkloadResourceHandoffException? ResourceHandoff { get; private set; }
 
     internal void RequestHandoff(CSweet.Agent.SDK.WorkloadResourceHandoffException handoff)
@@ -55,6 +56,7 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         {
             var result = await execution.WaitAsync(timeout, cancellationToken);
             if (result.TimedOut) throw Stop(false);
+            if (AfterCommand is not null) await AfterCommand(command, result, cancellationToken);
             return result;
         }
         catch (Exception error) when (error is TimeoutException or OperationCanceledException)

@@ -251,8 +251,8 @@ public sealed class NoChangeReworkTests
         { Development = new(Guid.NewGuid(), "linux", ["Scope"], ["Acceptance"]) };
         var prompt = AssignedDevelopmentService.BuildAssignmentPrompt(Guid.NewGuid(), item, 1,
             reviewFeedback: [Qa("First.", "Second.")]);
-        Assert.Contains("\"id\": \"R1.2\"", prompt);
-        Assert.Contains("\"text\": \"Second.\"", prompt);
+        Assert.Contains("\"id\":\"R1.2\"", prompt);
+        Assert.Contains("\"text\":\"Second.\"", prompt);
         Assert.Contains("needs-decision", prompt);
         Assert.Contains("never fabricate measurements", prompt);
     }

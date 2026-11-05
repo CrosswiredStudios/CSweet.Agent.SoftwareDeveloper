@@ -93,8 +93,6 @@ internal sealed class WorkspaceValidation
 
     internal void Record(string command, ShellResult result, string source)
     {
-<<<<<<< Updated upstream
-=======
         // Dependency directories are deliberately excluded from source snapshots/fingerprints.
         // A successful restore changes runtime inputs even when lock/source bytes are identical.
         // Keep audit history, but require fresh validation after those inputs change.
@@ -106,7 +104,6 @@ internal sealed class WorkspaceValidation
             _receipts.Clear();
             InputRevision++;
         }
->>>>>>> Stashed changes
         if (IsStandalone(command))
         {
             var diagnostic = result.ExitCode == 0 ? null : new string((result.Stderr + "\n" + result.Stdout)

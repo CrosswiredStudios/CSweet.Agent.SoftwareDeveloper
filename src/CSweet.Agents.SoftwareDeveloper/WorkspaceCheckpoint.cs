@@ -11,6 +11,21 @@ internal sealed class WorkspaceCheckpoint(Func<CancellationToken, Task> checkpoi
 
     internal AIAgent Attach(AIAgent agent) => agent.AsBuilder().Use(InvokeAsync).Build();
 
+    internal static async Task SaveAsync(Func<CancellationToken, Task> save, CancellationToken token)
+    {
+        for (var retry = 0; ; retry++)
+        {
+            token.ThrowIfCancellationRequested();
+            try { await save(token); return; }
+            catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            // Uploads have content-addressed idempotency keys. Retry their transport, never the mutation.
+            catch (Exception error) when (retry < 2 && error is not IOException && DevelopmentTransport.IsTransient(error))
+            { await Task.Delay(TimeSpan.FromSeconds(retry + 1), token); }
+            catch (WorkspaceCheckpointException) { throw; }
+            catch (Exception error) { throw new WorkspaceCheckpointException(error); }
+        }
+    }
+
     private async ValueTask<object?> InvokeAsync(AIAgent agent, FunctionInvocationContext context,
         Func<FunctionInvocationContext, CancellationToken, ValueTask<object?>> next, CancellationToken token)
     {
@@ -20,6 +35,12 @@ internal sealed class WorkspaceCheckpoint(Func<CancellationToken, Task> checkpoi
         {
             if (Failure is { } failure) throw failure;
             try { return await next(context, token); }
+            catch (WorkspaceCheckpointException error)
+            {
+                Failure = error;
+                stop();
+                throw;
+            }
             finally
             {
                 // Commands can edit source even when they fail. Preserve partial tool edits too.
@@ -27,11 +48,11 @@ internal sealed class WorkspaceCheckpoint(Func<CancellationToken, Task> checkpoi
                 // last completed checkpoint instead of bypassing cancellation during teardown.
                 if (!token.IsCancellationRequested && ChangesSource(context))
                 {
-                    try { await checkpoint(token); }
+                    try { await SaveAsync(checkpoint, token); }
                     catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
                     catch (Exception error)
                     {
-                        Failure = new WorkspaceCheckpointException(error);
+                        Failure = error as WorkspaceCheckpointException ?? new WorkspaceCheckpointException(error);
                         stop();
                         throw Failure;
                     }

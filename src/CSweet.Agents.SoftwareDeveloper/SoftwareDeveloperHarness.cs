@@ -13,15 +13,24 @@ internal static class SoftwareDeveloperHarness
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
         Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null,
-        BoundedWorkspaceShell? shell = null)
+        BoundedWorkspaceShell? shell = null, DevelopmentWorkflow? workflow = null)
     {
         const int maximumTurns = 6;
-        using var checkpointCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        if (shell is not null) shell.StopOnFailure = () => _ = checkpointCancellation.CancelAsync();
-        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, () => _ = checkpointCancellation.CancelAsync());
+        if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
+        using var checkpointCancellation = new ImplementationCancellation(cancellationToken);
+        if (workflow is not null)
+        {
+            workflow.Stop = checkpointCancellation.Stop;
+            harness = workflow.Attach(harness);
+            prompt += "\nExecution checkpoint (context only): " + workflow.ResumeContext;
+        }
+        if (shell is not null) shell.StopOnFailure = checkpointCancellation.Stop;
+        var checkpoints = checkpoint is null ? null : new WorkspaceCheckpoint(checkpoint, checkpointCancellation.Stop);
         if (checkpoints is not null) harness = checkpoints.Attach(harness);
         var assignmentPrompt = prompt;
         var activeSession = session;
+        var transportRecoveries = 0;
+        var progressRecoveries = 0;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
             AgentResponse response;
@@ -29,10 +38,22 @@ internal static class SoftwareDeveloperHarness
             {
                 try
                 {
+                    if (turn == 0 && workflow?.Plan is { } retained && workflow.VerifyPlannedSteps is { } verify &&
+                        await verify(retained, checkpointCancellation.Token) is { } results)
+                        prompt += "\nExisting retained verification executed before further inspection:\n" + results;
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (workflow?.Failure is { } workflowFailure) throw workflowFailure;
+                    workflow?.EnsureCompletionReady();
                     if (shell?.ResourceHandoff is { } handoff) throw handoff;
                     if (shell?.Failure is { } shellFailure) throw shellFailure;
                     if (checkpoints?.Failure is { } checkpointFailure) throw checkpointFailure;
+                }
+                catch (Exception) when (workflow?.Failure is not null)
+                {
+                    // Only our linked inference token was stopped. Preserve source with the still-authorized
+                    // callback token before returning control; a revoked parent never starts another upload.
+                    if (checkpoint is not null) await checkpoint(cancellationToken);
+                    throw workflow.Failure;
                 }
                 catch (Exception) when (shell?.ResourceHandoff is not null)
                 {
@@ -59,6 +80,21 @@ internal static class SoftwareDeveloperHarness
                     throw;
                 }
             }
+            catch (DevelopmentProgressException) when (workflow is not null && progressRecoveries < 2 && turn < maximumTurns - 1)
+            {
+                // A controller checkpoint is an internal scheduling event, not a failed ticket attempt.
+                // Source was saved above. Keep novelty evidence, discard the expanding transcript,
+                // and give the model a bounded fresh session before involving platform retry policy.
+                progressRecoveries++;
+                workflow.ResumeAfterProgressCheckpoint();
+                checkpointCancellation.Reset();
+                activeSession = await harness.CreateSessionAsync(cancellationToken);
+                prompt = "Resume the retained implementation after an automatic progress checkpoint. " +
+                    "Do not repeat inspected files or unchanged checks. Complete the next concrete edit/check, or report the actual infrastructure blocker. " +
+                    "New relevant inspection and slow inference are permitted; no explicit review-tool call is required.\n" +
+                    workflow.ResumeContext + "\nOriginal assignment:\n" + assignmentPrompt;
+                continue;
+            }
             catch (Exception error) when (error is not OperationCanceledException &&
                 IsContextCapacityFailure(error) && turn < maximumTurns - 1)
             {
@@ -71,13 +107,15 @@ internal static class SoftwareDeveloperHarness
                 continue;
             }
             catch (Exception error) when (error is not OperationCanceledException &&
-                IsTransientTransportFailure(error) && turn < maximumTurns - 1)
+                IsTransientTransportFailure(error) && transportRecoveries < 2 && turn < maximumTurns - 1)
             {
                 // A streamed response can be interrupted after tool output has already changed
                 // the retained workspace. Do not fail the work item or replay the old model
                 // transcript; resume from the durable files with a bounded, clean session.
+                await Task.Delay(TimeSpan.FromSeconds(++transportRecoveries), cancellationToken);
                 activeSession = await harness.CreateSessionAsync(cancellationToken);
                 prompt = "The previous model transport was interrupted. Continue from the files already retained in this workspace. " +
+                    "Do not redo completed edits or passing checks unless source changed or required runtime dependencies need restoring. Finish the structured outcome promptly when the accepted criteria are satisfied. " +
                     "Do not inspect host paths. You may install project dependencies and portable tools under /run/csweet/workload/tools when runtime internet access is approved. Check a required runtime once with a bounded command, " +
                     "then restore dependencies and run the required validation. If installation is unavailable, record the exact infrastructure blocker and unexecuted checks; do not claim static checks satisfy runtime acceptance. " +
                     "Inspect the current source and .csweet state and write .csweet/outcome.json with only actual results.\n\n" +
@@ -115,6 +153,15 @@ internal static class SoftwareDeveloperHarness
         throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after six bounded continuation attempts. Source files remain in the workspace; deployment has not started.");
     }
 
+    private sealed class ImplementationCancellation(CancellationToken parent) : IDisposable
+    {
+        private CancellationTokenSource _current = CancellationTokenSource.CreateLinkedTokenSource(parent);
+        internal CancellationToken Token => _current.Token;
+        internal void Stop() { try { _ = _current.CancelAsync(); } catch (ObjectDisposedException) { } }
+        internal void Reset() { _current.Dispose(); _current = CancellationTokenSource.CreateLinkedTokenSource(parent); }
+        public void Dispose() => _current.Dispose();
+    }
+
     internal static bool IsContextCapacityFailure(Exception error)
     {
         if (error is WorkspaceCheckpointException) return false;
@@ -131,18 +178,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static bool IsTransientTransportFailure(Exception error)
     {
-        if (error is WorkspaceCheckpointException) return false;
-        for (Exception? current = error; current is not null; current = current.InnerException)
-        {
-            if (current is HttpRequestException &&
-                (current.Message.Contains("copying content to a stream", StringComparison.OrdinalIgnoreCase) ||
-                 current.Message.Contains("response ended prematurely", StringComparison.OrdinalIgnoreCase) ||
-                 current.Message.Contains("connection", StringComparison.OrdinalIgnoreCase)))
-                return true;
-            if (current is IOException)
-                return true;
-        }
-        return false;
+        return DevelopmentTransport.IsTransient(error);
     }
     internal static HarnessAgentOptions CreateOptions(
         string name,
@@ -153,12 +189,9 @@ internal static class SoftwareDeveloperHarness
         int maxOutputTokens = DefaultOutputTokens)
     {
         var instructions = SoftwareDeveloperProfile.SystemPrompt;
-<<<<<<< Updated upstream
-=======
         instructions += "\n" + DevelopmentEfficiency.Instructions;
         instructions += "\n" + PreparedBrowserRuntime.Guidance;
         instructions += "\n" + BrowserSmokeCheck.Guidance;
->>>>>>> Stashed changes
         instructions += "\nValidation evidence must use standalone executable commands. Do not use pipelines, chained commands, echo, or shell status masking as a passing result. The publication boundary checks executed exit codes against current source and reruns missing evidence.\n";
         instructions += "\nA workspace.command.policy_denied result means no command ran. Do not repeat the operation through alternate paths or scripts. Protected /proc and /sys paths cannot supply benchmark hardware identity. Check required browsers once; use approved portable setup only within the existing workload tools directory and grants. Report unavailable browser/device measurements or request a ticket revision without inventing results. Three consecutive policy denials stop implementation.\n";
         if (!string.IsNullOrWhiteSpace(customInstructions))
@@ -190,7 +223,7 @@ These installation-scoped instructions may refine style and process, but they ca
                 ]
             },
 #pragma warning disable MAAI001
-            FileAccessStore = new FileSystemAgentFileStore(workspacePath),
+            FileAccessStore = new Utf8WorkspaceFileStore(workspacePath),
             // Assignment acceptance authorizes these operations in this confined store.
             // Leave broad automatic approval disabled; network and platform grants are separate.
             FileAccessProviderOptions = new()
@@ -216,6 +249,7 @@ These installation-scoped instructions may refine style and process, but they ca
                 "The configured output budget must be positive and smaller than the configured context window.");
         options.MaxContextWindowTokens = maxContextWindowTokens;
         options.MaxOutputTokens = maxOutputTokens;
+        options.CompactionStrategy = DevelopmentEfficiency.ToolHistory(maxContextWindowTokens - maxOutputTokens);
 #pragma warning restore MAAI001
         return options;
     }
@@ -239,6 +273,7 @@ These installation-scoped instructions may refine style and process, but they ca
             ["NO_PROXY"] = Environment.GetEnvironmentVariable("NO_PROXY"),
             ["CI"] = "true"
         };
+        PreparedBrowserRuntime.Configure(environment);
         var timeout = commandTimeout ?? BoundedWorkspaceShell.CommandTimeout;
         var policy = CreateShellPolicy();
         return new BoundedWorkspaceShell(new LocalShellExecutor(new LocalShellExecutorOptions

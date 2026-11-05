@@ -10,8 +10,6 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class HarnessExecutionTests
 {
-<<<<<<< Updated upstream
-=======
     [Fact]
     public async Task File_tools_write_executable_scripts_and_json_without_an_implicit_BOM()
     {
@@ -96,7 +94,6 @@ public sealed class HarnessExecutionTests
         Assert.Equal(3, uploads);
     }
 
->>>>>>> Stashed changes
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
@@ -506,9 +503,10 @@ public sealed class HarnessExecutionTests
         finally { Directory.Delete(root, true); }
     }
 
-    private sealed class InterruptedClient(bool transient) : IChatClient
+    private sealed class InterruptedClient(bool transient, Exception? failure = null) : IChatClient
     {
         private int _calls;
+        internal int Edits;
         public void Dispose() { }
         public object? GetService(Type type, object? key = null) => null;
         public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages, ChatOptions? options = null,
@@ -521,13 +519,17 @@ public sealed class HarnessExecutionTests
             var call = ++_calls;
             if (call == 2)
             {
+                if (failure is not null) throw failure;
                 if (transient) throw new HttpRequestException("The connection was interrupted.");
                 throw new InvalidOperationException("The inference provider has no model loaded.");
             }
             if (call is 1 or 3)
+            {
+                if (call == 1) Edits++;
                 yield return new(ChatRole.Assistant, [new FunctionCallContent("write-" + call, "file_access_write",
                     new Dictionary<string, object?> { ["fileName"] = call == 1 ? "partial.txt" : ".csweet/outcome.json",
                         ["content"] = call == 1 ? "Retain these edits" : "{}", ["overwrite"] = true })]);
+            }
             else yield return new(ChatRole.Assistant, "Complete.");
         }
     }

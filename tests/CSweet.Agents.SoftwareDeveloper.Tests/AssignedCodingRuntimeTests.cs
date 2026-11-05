@@ -9,17 +9,12 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class AssignedCodingRuntimeTests
 {
-<<<<<<< Updated upstream
-    [Fact]
-    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute()
-=======
     [Theory]
     [InlineData(false, false)]
     [InlineData(true, false)]
     [InlineData(false, true)]
     [InlineData(true, false, 500)]
     public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute(bool gateway, bool stalled, int status = 502)
->>>>>>> Stashed changes
     {
         var itemId = Guid.NewGuid(); var boardId = Guid.NewGuid(); var workspaceId = Guid.NewGuid();
         var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspaceId);
@@ -40,13 +35,18 @@ public sealed class AssignedCodingRuntimeTests
             ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid().ToString()),
             ["llmModel"] = JsonSerializer.SerializeToElement("test-model")
         });
-<<<<<<< Updated upstream
-        var factory = new ReachedModelFactory(root);
-=======
         var factory = new ReachedModelFactory(root, gateway, stalled, status);
         AgentOperatingStateResponse? executionPlan = null;
->>>>>>> Stashed changes
         var runtime = new AgentTestRuntime()
+            .RegisterCapability<AgentOperatingStateReadRequest, AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,
+                (r, _) => Task.FromResult(new AgentOperatingStateReadResponse(executionPlan?.StateKey == r.StateKey ? executionPlan : null)))
+            .RegisterCapability<AgentOperatingStateWriteRequest, AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite, (r, _) =>
+            {
+                executionPlan = new(Guid.NewGuid(), r.StateKey, r.SchemaId, r.SchemaVersion, r.Status, r.SourceRevisions,
+                    r.ConditionCodes, r.DecisionFingerprint, r.OpenCommitmentCorrelations, r.AttentionReviewId, r.Payload,
+                    (executionPlan?.Revision ?? 0) + 1, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+                return Task.FromResult(executionPlan);
+            })
             .RegisterCapability<WorkItemReference, WorkItem>(WorkManagementCapabilityNames.ItemRead, (_, _) => Task.FromResult(item))
             .RegisterCapability<ReadWorkItemCommentsRequest, WorkItemCommentPage>(WorkManagementCapabilityNames.ItemCommentsRead,
                 (_, _) => Task.FromResult(new WorkItemCommentPage([], 1, 20, false, 1)))
@@ -63,6 +63,15 @@ public sealed class AssignedCodingRuntimeTests
             var result = await service.ExecuteAsync(new AgentCapabilityRequest(Guid.NewGuid(), WorkManagementCapabilityNames.ExecutionRun,
                 JsonSerializer.SerializeToElement(assignment, new JsonSerializerOptions(JsonSerializerDefaults.Web))), runtime.CreateContext(), default);
             Assert.True(factory.Called);
+            if (gateway || stalled)
+            {
+                Assert.False(result.Succeeded);
+                Assert.True(result.Retryable);
+                Assert.Equal(stalled ? "development.progress" : "runtime.transport", result.FailureCode);
+                Assert.Null(result.Value); // Infrastructure failure must not become a terminal Blocked disposition.
+                Assert.False(File.Exists(Path.Combine(root, "must-not-run.txt")));
+                return;
+            }
             var outcome = result.Value!.Value.Deserialize<WorkExecutionOutcomeV1>(new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
             Assert.Equal(WorkExecutionDispositions.Blocked, outcome.Disposition);
             Assert.Contains("configured coding model is unavailable", outcome.Summary);
@@ -79,25 +88,19 @@ public sealed class AssignedCodingRuntimeTests
         return buffer.ToArray();
     }
 
-<<<<<<< Updated upstream
-    private sealed class ReachedModelFactory(string root) : IAgentLlmClientFactory
-=======
     private sealed class ReachedModelFactory(string root, bool gateway, bool stalled, int status) : IAgentLlmClientFactory
->>>>>>> Stashed changes
     {
         internal bool Called;
         public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
         {
             Assert.Equal("source snapshot", File.ReadAllText(Path.Combine(root, "README.md")));
+            Assert.Equal(BrowserDeliveryRecipe.Guidance, File.ReadAllText(Path.Combine(root, ".csweet", "browser-delivery-recipe.md")));
             Called = true;
-<<<<<<< Updated upstream
-=======
             if (gateway) throw new HttpRequestException("The MCP service rejected the request: " +
                 (status == 500 ? "Internal Server Error" : "Bad Gateway"), null, (System.Net.HttpStatusCode)status);
             if (stalled) return Task.FromResult<IChatClient>(new DevelopmentWorkflowTests.ScriptClient(
                 new[] { DevelopmentWorkflowTests.Plan() }.Concat(Enumerable.Range(0, 96).Select(index => new FunctionCallContent("repeated-read-" + index, "file_access_read",
                     new Dictionary<string, object?> { ["fileName"] = "README.md" }))).ToArray()));
->>>>>>> Stashed changes
             throw new InvalidOperationException("Stop at model boundary; no live inference in this test.");
         }
     }

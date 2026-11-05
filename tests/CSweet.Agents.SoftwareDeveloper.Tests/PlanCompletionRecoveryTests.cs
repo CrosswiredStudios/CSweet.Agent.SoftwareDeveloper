@@ -212,6 +212,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
 
     private sealed class OutcomeClient(string json) : IChatClient
     {
+        private bool _planned;
         private int _calls;
         public void Dispose() { }
         public object? GetService(Type type, object? key = null) => null;
@@ -222,6 +223,7 @@ public sealed partial class ComputeDeploymentRecoveryTests
             ChatOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.Yield();
+            if (!_planned) { _planned = true; yield return new(ChatRole.Assistant, [DevelopmentWorkflowTests.Plan()]); yield break; }
             if (++_calls == 1)
                 yield return new(ChatRole.Assistant, [new FunctionCallContent("outcome", "file_access_write",
                     new Dictionary<string, object?> { ["fileName"] = ".csweet/outcome.json", ["content"] = json, ["overwrite"] = true })]);
