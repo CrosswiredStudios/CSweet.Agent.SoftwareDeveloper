@@ -9,8 +9,17 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class AssignedCodingRuntimeTests
 {
+<<<<<<< Updated upstream
     [Fact]
     public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute()
+=======
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false, 500)]
+    public async Task Assigned_coding_reaches_model_in_materialized_runtime_without_deployment_compute(bool gateway, bool stalled, int status = 502)
+>>>>>>> Stashed changes
     {
         var itemId = Guid.NewGuid(); var boardId = Guid.NewGuid(); var workspaceId = Guid.NewGuid();
         var root = PlatformGitWorkspaceClient.LocalWorkspacePath(workspaceId);
@@ -31,7 +40,12 @@ public sealed class AssignedCodingRuntimeTests
             ["llmProviderId"] = JsonSerializer.SerializeToElement(Guid.NewGuid().ToString()),
             ["llmModel"] = JsonSerializer.SerializeToElement("test-model")
         });
+<<<<<<< Updated upstream
         var factory = new ReachedModelFactory(root);
+=======
+        var factory = new ReachedModelFactory(root, gateway, stalled, status);
+        AgentOperatingStateResponse? executionPlan = null;
+>>>>>>> Stashed changes
         var runtime = new AgentTestRuntime()
             .RegisterCapability<WorkItemReference, WorkItem>(WorkManagementCapabilityNames.ItemRead, (_, _) => Task.FromResult(item))
             .RegisterCapability<ReadWorkItemCommentsRequest, WorkItemCommentPage>(WorkManagementCapabilityNames.ItemCommentsRead,
@@ -65,13 +79,25 @@ public sealed class AssignedCodingRuntimeTests
         return buffer.ToArray();
     }
 
+<<<<<<< Updated upstream
     private sealed class ReachedModelFactory(string root) : IAgentLlmClientFactory
+=======
+    private sealed class ReachedModelFactory(string root, bool gateway, bool stalled, int status) : IAgentLlmClientFactory
+>>>>>>> Stashed changes
     {
         internal bool Called;
         public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection, CancellationToken cancellationToken = default)
         {
             Assert.Equal("source snapshot", File.ReadAllText(Path.Combine(root, "README.md")));
             Called = true;
+<<<<<<< Updated upstream
+=======
+            if (gateway) throw new HttpRequestException("The MCP service rejected the request: " +
+                (status == 500 ? "Internal Server Error" : "Bad Gateway"), null, (System.Net.HttpStatusCode)status);
+            if (stalled) return Task.FromResult<IChatClient>(new DevelopmentWorkflowTests.ScriptClient(
+                new[] { DevelopmentWorkflowTests.Plan() }.Concat(Enumerable.Range(0, 96).Select(index => new FunctionCallContent("repeated-read-" + index, "file_access_read",
+                    new Dictionary<string, object?> { ["fileName"] = "README.md" }))).ToArray()));
+>>>>>>> Stashed changes
             throw new InvalidOperationException("Stop at model boundary; no live inference in this test.");
         }
     }

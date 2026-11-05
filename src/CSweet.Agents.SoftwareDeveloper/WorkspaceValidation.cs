@@ -8,6 +8,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 internal sealed class WorkspaceValidation
 {
     private readonly Dictionary<string, (string Source, SoftwareDevelopmentValidation Result)> _receipts = new(StringComparer.Ordinal);
+    internal long InputRevision { get; private set; }
 
     internal CSweet.Agent.SDK.WorkspaceResumeSummary Summary(string root)
     {
@@ -75,12 +76,14 @@ internal sealed class WorkspaceValidation
 
     internal async Task<SoftwareDevelopmentOutcome> VerifyWithRepairAsync(SoftwareDevelopmentOutcome outcome,
         BoundedWorkspaceShell shell, string root,
-        Func<SoftwareDevelopmentOutcome, CancellationToken, Task<SoftwareDevelopmentOutcome>> repair, CancellationToken token)
+        Func<SoftwareDevelopmentOutcome, CancellationToken, Task<SoftwareDevelopmentOutcome>> repair, CancellationToken token,
+        Func<SoftwareDevelopmentOutcome, SoftwareDevelopmentOutcome>? requireEvidence = null)
     {
         for (var pass = 0; ; pass++)
         {
             token.ThrowIfCancellationRequested();
             outcome = await VerifyAsync(outcome, shell, root, token);
+            if (requireEvidence is not null) outcome = requireEvidence(outcome);
             if (outcome.Validations.Count > 0 && outcome.Validations.All(x => x.Succeeded && x.ExitCode == 0) ||
                 pass == 2 || DevelopmentDiagnostics.MissingToolDecision(outcome, "current ticket") is not null)
                 return outcome;
@@ -90,6 +93,20 @@ internal sealed class WorkspaceValidation
 
     internal void Record(string command, ShellResult result, string source)
     {
+<<<<<<< Updated upstream
+=======
+        // Dependency directories are deliberately excluded from source snapshots/fingerprints.
+        // A successful restore changes runtime inputs even when lock/source bytes are identical.
+        // Keep audit history, but require fresh validation after those inputs change.
+        var words = command.Split([' ', '\t', '\r', '\n'], 3, StringSplitOptions.RemoveEmptyEntries);
+        if (!result.TimedOut && result.ExitCode == 0 && words.Length >= 2 &&
+            (words[0] is "npm" or "pnpm" or "yarn" or "bun" && words[1] is "ci" or "install" or "add" or "update" or "remove" ||
+             words[0] == "dotnet" && words[1] == "restore"))
+        {
+            _receipts.Clear();
+            InputRevision++;
+        }
+>>>>>>> Stashed changes
         if (IsStandalone(command))
         {
             var diagnostic = result.ExitCode == 0 ? null : new string((result.Stderr + "\n" + result.Stdout)
@@ -135,7 +152,7 @@ internal sealed class WorkspaceValidation
             if ((attributes & FileAttributes.ReparsePoint) != 0) continue;
             if ((attributes & FileAttributes.Directory) != 0)
             {
-                if (Path.GetFileName(path) is not (".git" or ".csweet" or "node_modules" or "bin" or "obj" or "dist" or "build" or "coverage" or ".venv" or "target" or "__pycache__")) pending.Push(path);
+                if (Path.GetFileName(path) is not (".git" or ".csweet" or "node_modules" or "bin" or "obj" or "dist" or "build" or "coverage" or "test-results" or ".venv" or "target" or "__pycache__")) pending.Push(path);
                 continue;
             }
             bytes += new FileInfo(path).Length;

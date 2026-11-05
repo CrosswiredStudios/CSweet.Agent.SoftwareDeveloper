@@ -123,8 +123,19 @@ internal sealed partial class PersonalDevelopmentService
                     _settings.GetString("customInstructions"),
                     _settings.GetInt32("maxContextWindowTokens", SoftwareDeveloperHarness.DefaultContextWindowTokens),
                     _settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
+<<<<<<< Updated upstream
                 options.ChatOptions!.Tools = [progress.ShellTool(shell), sizing.Tool(shell)];
                 var harness = progress.Attach(client.AsHarnessAgent(options));
+=======
+                options.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
+                    token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
+                        resumeSummary: progress.Validations.Summary(root))), sizing.Tool(shell)];
+                var browser = new BrowserSmokeCheck.Session(root, progress, shell,
+                    token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
+                        resumeSummary: progress.Validations.Summary(root)));
+                options.ChatOptions.Tools.Add(browser.Tool());
+                var harness = progress.Attach(client.AsHarnessAgent(workflow.Configure(options)));
+>>>>>>> Stashed changes
                 var session = await harness.CreateSessionAsync(ct);
                 try
                 {

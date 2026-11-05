@@ -186,9 +186,24 @@ internal sealed partial class AssignedDevelopmentService(
                 _settings.GetString("customInstructions"),
                 maxContextWindowTokens,
                 maxOutputTokens);
+<<<<<<< Updated upstream
         harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), sizing.Tool(shell)];
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken))));
+=======
+        harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
+            token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
+                resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell)];
+        var browser = new BrowserSmokeCheck.Session(workspacePath, progress, shell,
+            token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
+                resumeSummary: progress.Validations.Summary(workspacePath)),
+            canvasRequired: BrowserSmokeCheck.Required(item) &&
+                System.Text.RegularExpressions.Regex.IsMatch(string.Join("\n", item.Development!.AcceptanceCriteria),
+                    @"\b(Phaser|canvas)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
+        harnessOptions.ChatOptions.Tools.Add(browser.Tool());
+        AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(workflow.Configure(discussion.Attach(
+            await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken)))));
+>>>>>>> Stashed changes
         harness = discussion.AttachPauseGuard(harness);
 
         await context.ReportProgressAsync(
@@ -233,7 +248,7 @@ internal sealed partial class AssignedDevelopmentService(
             if (discussion.Pending is { } waiting) throw new TicketResponseRequiredException(waiting);
             return await ReadCheckpointedOutcomeAsync(workspacePath,
                 ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token);
-        }, cancellationToken);
+        }, cancellationToken, BrowserSmokeCheck.Required(item) ? browser.RequireEvidence : null);
         await context.Platform.Git.UploadAsync(workspace, assignmentRevision, cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
@@ -348,8 +363,15 @@ internal sealed partial class AssignedDevelopmentService(
                 item.Description,
                 item.PlanningRevision,
                 ticketDiscussion = ticketDiscussion ?? [],
+<<<<<<< Updated upstream
                 item.StageAssignments,
                 requirements = item.Development!.Requirements,
+=======
+                // The planner historically copied the entire description into Requirements.
+                // Preserve each distinct requirement once without dropping accepted scope.
+                requirements = item.Development!.Requirements.Where(x => !string.Equals(x.Trim(), item.Description?.Trim(), StringComparison.Ordinal))
+                    .Distinct(StringComparer.Ordinal).ToArray(),
+>>>>>>> Stashed changes
                 item.Development.AcceptanceCriteria,
                 constraints = item.Development.Constraints ?? [],
                 qaFindings = item.Development.ReworkFindings ?? [],
