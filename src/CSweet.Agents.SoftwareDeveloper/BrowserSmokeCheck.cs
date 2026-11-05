@@ -46,6 +46,7 @@ internal static class BrowserSmokeCheck
     {
         private string? successfulSource;
         private long successfulInputs;
+        private string? successfulCommand;
         internal bool Passed => successfulSource is not null && successfulInputs == progress.Validations.InputRevision &&
             successfulSource == WorkspaceValidation.SourceFingerprint(root);
         internal AIFunction Tool() => AIFunctionFactory.Create(async (string buildDirectory, bool requireCanvas, CancellationToken token) =>
@@ -55,7 +56,7 @@ internal static class BrowserSmokeCheck
             var source = WorkspaceValidation.SourceFingerprint(root);
             var result = await progress.RunShellCoreAsync(shell, Command(buildDirectory, requireCanvas || canvasRequired), token);
             if (result.Succeeded && source == WorkspaceValidation.SourceFingerprint(root))
-            { successfulSource = source; successfulInputs = progress.Validations.InputRevision; }
+            { successfulSource = source; successfulInputs = progress.Validations.InputRevision; successfulCommand = Command(buildDirectory, requireCanvas || canvasRequired); }
             await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
             return result.Output;
         }, "check_browser_build", "Launch the static build in real prepared Chromium; record JS/asset failures, visible surface, and screenshot. No downloads or custom test scripts. Use requireCanvas=true for game canvas criteria. Returns actual command evidence; failed/missing browser is never a pass.");
@@ -63,7 +64,12 @@ internal static class BrowserSmokeCheck
         internal SoftwareDevelopmentOutcome RequireEvidence(SoftwareDevelopmentOutcome outcome)
         {
             const string missing = "check_browser_build";
-            var validations = outcome.Validations.Where(x => x.Command != missing).ToList();
+            // Model tool-call notation is not a shell command. Replace it with the trusted
+            // current-source receipt; retain every unrelated validation and its failure.
+            var validations = outcome.Validations.Where(x => !System.Text.RegularExpressions.Regex.IsMatch(
+                x.Command.TrimStart(), @"^check_browser_build(?:\s|\(|$)")).ToList();
+            if (Passed && !validations.Any(x => x.Command == successfulCommand))
+                validations.Add(new(successfulCommand!, true, 0, "Observed current-source Chromium loading and surface check; independent QA remains required."));
             if (!Passed) validations.Add(new(missing, false, -1,
                 "No current-source real-browser receipt. Call check_browser_build for the static output, fix observed errors, and retain its actual result; static checks do not replace browser evidence."));
             return outcome with { Validations = validations };

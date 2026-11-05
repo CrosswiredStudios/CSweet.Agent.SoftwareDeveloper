@@ -37,6 +37,9 @@ public sealed class BrowserSmokeCheckTests
             var browser = new BrowserSmokeCheck.Session(root, progress, shell, _ => { saves++; return Task.CompletedTask; }, canvasRequired:true);
             var report = new SoftwareDevelopmentOutcome("Static checks pass", ["app.js"], [new("npm run build", true, 0)]);
             Assert.False(browser.Passed);
+            var toolNotation = report with { Validations = [..report.Validations,
+                new("check_browser_build buildDirectory=dist requireCanvas=true", true, 0)] };
+            Assert.Contains(browser.RequireEvidence(toolNotation).Validations, x => !x.Succeeded);
             Assert.Contains(browser.RequireEvidence(report).Validations, x => !x.Succeeded && x.Command == "check_browser_build");
             var args = new Microsoft.Extensions.AI.AIFunctionArguments(new Dictionary<string,object?> { ["buildDirectory"]="dist", ["requireCanvas"]=false });
             await browser.Tool().InvokeAsync(args);
@@ -52,6 +55,12 @@ public sealed class BrowserSmokeCheckTests
             Assert.Equal(1,repairs);
             Assert.DoesNotContain(verified.Validations,x=>!x.Succeeded);
             Assert.True(browser.Passed);
+            var normalized = browser.RequireEvidence(toolNotation);
+            Assert.All(normalized.Validations, x => Assert.True(x.Succeeded));
+            Assert.Contains(normalized.Validations, x => x.Command == "node .csweet/browser-smoke.cjs dist --canvas");
+            Assert.DoesNotContain(normalized.Validations, x => x.Command.StartsWith("check_browser_build"));
+            var realFailure = browser.RequireEvidence(toolNotation with { Validations = [..toolNotation.Validations, new("npm test", false, 1)] });
+            Assert.Contains(realFailure.Validations, x => x.Command == "npm test" && !x.Succeeded);
             Assert.EndsWith("--canvas", executor.LastCommand); // Caller cannot waive canvas evidence.
             Assert.Equal(2, saves);
             var source = WorkspaceValidation.SourceFingerprint(root);

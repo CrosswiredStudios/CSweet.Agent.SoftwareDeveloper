@@ -37,6 +37,8 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Verify checked-out release source
+        run: python3 scripts/verify-agent-release-source.py
       - name: Resolve version
         id: version
         shell: pwsh
