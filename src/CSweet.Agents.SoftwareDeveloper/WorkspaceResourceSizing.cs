@@ -35,7 +35,8 @@ internal sealed class WorkspaceResourceSizing(GitWorkspaceResult workspace, long
         throw new WorkloadResourceHandoffException(new(estimate.MemoryMb, receipt, "build", estimate.Fingerprint, "project-estimate"));
     }
 
-    internal static bool IsHeavy(string command) => new[] { "build", "test", "check", "lint", "npm ci", "npm install", "restore", "compile", "publish" }
+    // Semantic search text often names builds or tests; the tool's own commands are inspection only.
+    internal static bool IsHeavy(string command) => !SemanticCodeSearch.IsCommand(command) && new[] { "build", "test", "check", "lint", "npm ci", "npm install", "restore", "compile", "publish" }
         .Any(x => command.Contains(x, StringComparison.OrdinalIgnoreCase));
 
     internal static (int MemoryMb, string Fingerprint) Estimate(string root, IReadOnlyList<WorkloadResourceHint> profiles, string? toolchainFingerprint = null)

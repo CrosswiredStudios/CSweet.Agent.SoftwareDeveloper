@@ -24,6 +24,10 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
         throw handoff;
     }
 
+    /// <summary>Evaluates the workspace policy without running or counting a denial.</summary>
+    internal bool Permits(string command) =>
+        policy is null || policy.Evaluate(new ShellRequest(command, workingDirectory ?? string.Empty)).Allowed;
+
     public override async Task<ShellResult> RunAsync(string command, CancellationToken cancellationToken = default)
     {
         if (Failure is { } failure) throw failure;

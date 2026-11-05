@@ -28,7 +28,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         {
             "file_access_read" => "Read file", "file_access_ls" => "List files", "file_access_grep" => "Search files",
             "file_access_write" => "Write file", "file_access_replace" or "file_access_replace_lines" => "Update file",
-            "file_access_delete" => "Delete file", _ => null
+            "file_access_delete" => "Delete file", SemanticCodeSearch.ToolName => "Search code", _ => null
         };
         if (label is null) return await next(context, token);
         var operation = Interlocked.Increment(ref _operations);
