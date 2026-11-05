@@ -131,7 +131,8 @@ internal sealed partial class PersonalDevelopmentService
                     _settings.GetInt32("maxOutputTokens", SoftwareDeveloperHarness.DefaultOutputTokens));
                 options.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
                     token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
-                        resumeSummary: progress.Validations.Summary(root))), sizing.Tool(shell)];
+                        resumeSummary: progress.Validations.Summary(root))), sizing.Tool(shell),
+                    .. SemanticCodeSearch.Tools(root, shell)];
                 var browser = new BrowserSmokeCheck.Session(root, progress, shell,
                     token => context.Platform.Git.UploadCheckpointAsync(workspace, 1, token,
                         resumeSummary: progress.Validations.Summary(root)));

@@ -209,7 +209,8 @@ internal sealed partial class AssignedDevelopmentService(
                 maxOutputTokens);
         harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
-                resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell)];
+                resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell),
+            .. SemanticCodeSearch.Tools(workspacePath, shell)];
         var browser = new BrowserSmokeCheck.Session(workspacePath, progress, shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                 resumeSummary: progress.Validations.Summary(workspacePath)),

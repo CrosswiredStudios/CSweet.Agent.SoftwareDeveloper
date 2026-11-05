@@ -113,8 +113,9 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         {
             if (Failure is { } failure) throw failure;
             var name = invocation.Function.Name;
-            var workspace = name.StartsWith("file_access_", StringComparison.Ordinal) || name is "execute_workspace_command" or "execute_workspace_commands";
-            var inspection = name is "file_access_read" or "file_access_ls" or "file_access_grep";
+            var workspace = name.StartsWith("file_access_", StringComparison.Ordinal) ||
+                name is "execute_workspace_command" or "execute_workspace_commands" or SemanticCodeSearch.ToolName;
+            var inspection = name is "file_access_read" or "file_access_ls" or "file_access_grep" or SemanticCodeSearch.ToolName;
             if (workspace && !inspection && Plan is null)
             {
                 // A plan protects edits; initial inspection is allowed. Never turn several calls
@@ -186,6 +187,8 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
 
     internal async Task ObserveCommandAsync(string command, ShellResult result, CancellationToken token)
     {
+        // Semantic search is counted once as a tool inspection; it is never command evidence.
+        if (SemanticCodeSearch.IsCommand(command)) return;
         _observedCommands.Add(command);
         // Routine inspections and downloads are not acceptance evidence. A new failed check is useful diagnostic progress.
         if (WorkspaceValidation.IsStandalone(command) && !command.TrimStart().StartsWith("grep ", StringComparison.Ordinal) &&

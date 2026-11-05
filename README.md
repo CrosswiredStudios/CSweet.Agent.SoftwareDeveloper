@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.1.14
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.2.0
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -53,7 +53,7 @@ block safely. This parser correction does not waive criteria or authorize histor
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.1.14`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.2.0`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -587,3 +587,11 @@ Core parity is verified with Adrian; identities and package versions remain inde
 ## Update-source repair (2.1.13)
 
 Resolve committed merge-conflict markers and restore the complete developer core, supporting files, historical notes and regression tests from the retained execution branch. Preserve the MCP recovery, real-browser evidence and context improvements. Publish this corrected source before fetching updates in Installed Agents.
+
+## Semantic code search (2.2.0)
+
+SemanticCodeSearch adds the `semantic_code_search` model tool when the certified image provides a regular `/usr/local/bin/sgrep` and its offline model cache under `/usr/lib/csweet/toolchains/sgrep` (CSweet.Office 0.15.0 or later). The clean shell then exports HF_HUB_CACHE, TREE_SITTER_LANGUAGE_PACK_CACHE_DIR, HF_HUB_OFFLINE=1 and a writable SGREP_CACHE_DIR outside the workspace. Without the image tooling the tool and its guidance are absent.
+
+The tool finds code by meaning; exact identifiers still use grep through execute_workspace_command. An optional ripgrep pattern reranks matching lines instead of searching every file. Arguments are quoted literals, paths stay inside the workspace, and results are bounded `path:start-end` excerpts below the shell output limit. Each search has its own 120 second limit, so a slow or failed search is a tool error, not a workspace timeout. Searches are inspection context only: they never create validation receipts, trigger build sizing or checkpoint source. Queries that match the workspace command policy are rejected before execution and do not count as policy denials.
+
+Core parity is verified with Adrian (Video Game Engineer 4.2.0); identities and package versions remain independent. Apply through the normal Installed Agents update flow.
