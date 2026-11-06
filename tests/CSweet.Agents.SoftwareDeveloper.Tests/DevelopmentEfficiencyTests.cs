@@ -36,7 +36,7 @@ public sealed class DevelopmentEfficiencyTests
         {
             history.AddGroup(CompactionGroupKind.ToolCall, [
                 new(ChatRole.Assistant, [new FunctionCallContent("call-" + index, "file_access_read", new Dictionary<string, object?> { ["fileName"] = "source-" + index })]),
-                new(ChatRole.Tool, [new FunctionResultContent("call-" + index, "tool-" + index + ":" + new string('x', 14_000))])], 0);
+                new(ChatRole.Tool, [new FunctionResultContent("call-" + index, "tool-" + index + ":" + new string('x', 80_000))])], 0);
         }
         var before = history.IncludedTokenCount;
         Assert.True(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
@@ -45,6 +45,20 @@ public sealed class DevelopmentEfficiencyTests
         Assert.Contains(retained, x => x.Role == ChatRole.User && x.Text == accepted);
         Assert.Contains(retained, x => x.Role == ChatRole.System && x.Text == "Never bypass reviews.");
         Assert.Contains(retained.SelectMany(x => x.Contents).OfType<FunctionResultContent>(), x => x.CallId == "call-13");
+    }
+
+    [Fact]
+    public async Task History_beyond_the_old_24k_threshold_is_retained_within_model_capacity()
+    {
+        var history = new CompactionMessageIndex([], null);
+        for (var index = 0; index < 14; index++)
+            history.AddGroup(CompactionGroupKind.ToolCall, [
+                new(ChatRole.Assistant, [new FunctionCallContent("call-" + index, "inspect", new Dictionary<string, object?>())]),
+                new(ChatRole.Tool, [new FunctionResultContent("call-" + index, new string('x', 14_000) + "retained-" + index)])], 0);
+        var before = history.IncludedTokenCount;
+        Assert.InRange(before, 24_001, 127_999);
+        Assert.False(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
+        Assert.Equal(before, history.IncludedTokenCount);
     }
 
     [Fact]
