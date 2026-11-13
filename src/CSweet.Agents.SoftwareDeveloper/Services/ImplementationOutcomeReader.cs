@@ -7,6 +7,8 @@ internal sealed class ImplementationOutcomeException(string message) : InvalidOp
 internal static class ImplementationOutcomeReader
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    internal const int MaximumFindingIdLength = 128;
+    internal const int MaximumEvidenceLength = 4000;
 
     internal static async Task<SoftwareDevelopmentOutcome> ReadAsync(
         string workspacePath,
@@ -41,13 +43,26 @@ internal static class ImplementationOutcomeReader
         if (outcome.Validations is null || outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => x is null || string.IsNullOrWhiteSpace(x.Command)))
             throw new ImplementationOutcomeException("The completion report requires validations with the commands actually run and their real results, including for unchanged work.");
-        if (outcome.FindingResolutions is { } resolutions &&
-            (resolutions.Count > 128 || resolutions.Any(x => x is null ||
-                string.IsNullOrWhiteSpace(x.FindingId) || x.FindingId.Length > 32 ||
-                !FindingResolutionKinds.IsKnown(x.Resolution) ||
-                string.IsNullOrWhiteSpace(x.Evidence) || x.Evidence.Length > 4000)))
-            throw new ImplementationOutcomeException(
-                "The completion report findingResolutions entries each require a findingId from the prompt, a resolution of fixed, already-resolved, disputed or needs-decision, and bounded evidence.");
+        if (outcome.FindingResolutions is { } resolutions)
+        {
+            // Reject only what cannot be used. An ID is matched against the prompt's review IDs later, and an
+            // entry that matches none is harmless, so the ID's form is not a reason to discard finished work:
+            // a delivery finding named in a corrective ticket is a 36-character GUID. Bounds are applied by
+            // trimming, not by refusing the report.
+            if (resolutions.Count > 128 || resolutions.Any(x => x is null ||
+                    string.IsNullOrWhiteSpace(x.FindingId) || x.FindingId.Trim().Length > MaximumFindingIdLength ||
+                    !FindingResolutionKinds.IsKnown(x.Resolution) || string.IsNullOrWhiteSpace(x.Evidence)))
+                throw new ImplementationOutcomeException(
+                    "The completion report findingResolutions entries each require a findingId, a resolution of fixed, already-resolved, disputed or needs-decision, and evidence.");
+            outcome = outcome with
+            {
+                FindingResolutions = resolutions.Select(x => x with
+                {
+                    FindingId = x.FindingId.Trim(),
+                    Evidence = x.Evidence.Length > MaximumEvidenceLength ? x.Evidence[..MaximumEvidenceLength] : x.Evidence
+                }).ToArray()
+            };
+        }
 
         File.Delete(path);
         return outcome;

@@ -441,7 +441,9 @@ Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
 If retained files already satisfy the ticket, use "changedFiles":[], explain what was verified in summary,
 and record fresh relevant validation. Do not invent edits merely to report changed files.
 
-When reviewFeedback is present, also add "findingResolutions" with one entry per finding ID (for example R1.2):
+When reviewFeedback is present, also add "findingResolutions" with one entry per finding ID (for example R1.2).
+A finding named only in the ticket text (for example a delivery finding ID in a corrective ticket) may be
+answered the same way, using its ID exactly as written:
 {"findingId":"R1.2","resolution":"fixed|already-resolved|disputed|needs-decision","evidence":"..."}
 - fixed: you changed code in this run to correct it.
 - already-resolved: the current workspace already satisfies it; cite the file, line or command output.

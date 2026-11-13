@@ -257,6 +257,26 @@ public sealed class NoChangeReworkTests
         Assert.Contains("never fabricate measurements", prompt);
     }
 
+    [Fact]
+    public async Task A_delivery_finding_guid_and_long_evidence_do_not_discard_the_completion_report()
+    {
+        // Super Awesome Games ticket 38 (2026-11-13): a corrective ticket named its delivery finding by GUID (36
+        // characters). The 32-character ID limit rejected the report after 18 minutes of finished, validated work.
+        var root = Path.Combine(Path.GetTempPath(), "csweet-resolution-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, ".csweet"));
+        try
+        {
+            var evidence = new string('e', ImplementationOutcomeReader.MaximumEvidenceLength + 500);
+            await File.WriteAllTextAsync(Path.Combine(root, ".csweet", "outcome.json"),
+                $$"""{"summary":"Added a root Dockerfile","changedFiles":["Dockerfile"],"validations":[{"command":"npm test","succeeded":true,"exitCode":0}],"findingResolutions":[{"findingId":" c88bb3db-8427-4c33-a5e1-07e22297593f ","resolution":"fixed","evidence":"{{evidence}}"}]}""",
+                new UTF8Encoding(false));
+            var resolution = Assert.Single((await ImplementationOutcomeReader.ReadAsync(root, default)).FindingResolutions!);
+            Assert.Equal("c88bb3db-8427-4c33-a5e1-07e22297593f", resolution.FindingId);
+            Assert.Equal(ImplementationOutcomeReader.MaximumEvidenceLength, resolution.Evidence.Length);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [Theory]
     [InlineData("""{"findingId":"R1.1","resolution":"ignored","evidence":"x"}""")]
     [InlineData("""{"findingId":"","resolution":"fixed","evidence":"x"}""")]
