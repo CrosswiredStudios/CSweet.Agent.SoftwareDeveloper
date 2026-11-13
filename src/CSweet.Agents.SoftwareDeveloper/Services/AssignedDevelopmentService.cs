@@ -217,6 +217,10 @@ internal sealed partial class AssignedDevelopmentService(
                 System.Text.RegularExpressions.Regex.IsMatch(string.Join("\n", item.Development!.AcceptanceCriteria),
                     @"\b(Phaser|canvas)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase));
         harnessOptions.ChatOptions.Tools.Add(browser.Tool());
+        var scenarios = new BrowserScenarioCheck.Session(workspacePath, progress, shell,
+            token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
+                resumeSummary: progress.Validations.Summary(workspacePath)));
+        harnessOptions.ChatOptions.Tools.Add(scenarios.Tool());
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(workflow.Configure(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken)))));
         harness = discussion.AttachPauseGuard(harness);
@@ -236,7 +240,8 @@ internal sealed partial class AssignedDevelopmentService(
                     technicalGuidance, dependencyPlans, reviewFeedback, managerDirections, discussion.CurrentThread) +
                 "\nRetained execution summary (context only; revalidate current source before publication): " + JsonSerializer.Serialize(workspace.ResumeSummary) +
                 "\nCurrent trusted resource policy: " + JsonSerializer.Serialize(context.Resources) + ". Use request_workload_memory before a heavy command when evidence indicates a larger VM is needed.\n" +
-                "\n" + BrowserDeliveryRecipe.GuidanceReference,
+                "\n" + BrowserDeliveryRecipe.GuidanceReference +
+                "\n" + BrowserScenarioCheck.AssignmentNote(item),
                 workspacePath,
                 cancellationToken, token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                     resumeSummary: progress.Validations.Summary(workspacePath)),
@@ -265,7 +270,10 @@ internal sealed partial class AssignedDevelopmentService(
             if (discussion.Pending is { } waiting) throw new TicketResponseRequiredException(waiting);
             return await ReadCheckpointedOutcomeAsync(workspacePath,
                 ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token);
-        }, cancellationToken, BrowserSmokeCheck.Required(item) ? browser.RequireEvidence : null);
+        }, cancellationToken, BrowserSmokeCheck.Required(item) || BrowserScenarioCheck.Required(item)
+            ? candidateOutcome => scenarios.BindEvidence(BrowserSmokeCheck.Required(item) ? browser.RequireEvidence(candidateOutcome) : candidateOutcome,
+                BrowserScenarioCheck.Required(item))
+            : null);
         await context.Platform.Git.UploadAsync(workspace, assignmentRevision, cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
