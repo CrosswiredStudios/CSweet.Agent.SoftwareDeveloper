@@ -82,7 +82,7 @@ public sealed partial class SoftwareDeveloperAgent : CSweetAgentBase
 
     public override Task<AgentCoordinationTurnResult> HandleCoordinationTurnAsync(
         AgentCoordinationTurnRequest request, AgentRuntimeContext context, CancellationToken cancellationToken) =>
-        new DevelopmentCoordinationService(ProjectIntake())
+        new DevelopmentCoordinationService(ProjectIntake(),new DevelopmentChatClientProvider(Settings,_llmClientFactory))
             .HandleAsync(request, context, cancellationToken);
     protected override Task<AgentWorkResult> ExecuteCapabilityCoreAsync(
         AgentCapabilityRequest request, AgentRuntimeContext context, CancellationToken cancellationToken)

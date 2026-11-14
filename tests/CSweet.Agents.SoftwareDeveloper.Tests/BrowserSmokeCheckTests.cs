@@ -1,3 +1,4 @@
+using CSweet.WorkManagement.Contracts;
 using Microsoft.Agents.AI.Tools.Shell;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -75,6 +76,63 @@ public sealed class BrowserSmokeCheckTests
             await File.WriteAllTextAsync(Path.Combine(root, "app.js"), "changed();");
             Assert.False(browser.Passed); // A later source edit needs fresh browser proof.
             Assert.Contains(browser.RequireEvidence(report).Validations, x => !x.Succeeded);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
+    // Super Awesome Games #22 (2026-11-10): no criterion said "canvas" or "visible", so the passing browser check was never
+    // bound, while the reviewer required it from the plan's constraint text. A planning declaration now decides.
+    private static WorkItem Ticket(string criterion, IReadOnlyList<WorkItemVerificationRequirement>? verifications) =>
+        System.Text.Json.JsonSerializer.Deserialize<WorkItem>("{}")! with
+        {
+            Description = "Static Chromium Phaser scene",
+            Development = new SoftwareDevelopmentBrief(Guid.NewGuid(), "node", ["Collision"], [criterion]),
+            Planning = new WorkItemPlanningSpecification(["Collision"], [criterion]) { Verifications = verifications }
+        };
+
+    private static readonly WorkItemVerificationRequirement Canvas = new(WorkItemVerificationKinds.BrowserSmoke) { RequireCanvas = true };
+
+    [Fact]
+    public void A_declaration_decides_whether_browser_evidence_is_required()
+    {
+        // The #22 criterion has no browser verb, so the heuristic said "not required".
+        const string criterion = "Ball hits and breaks a block and a restart action returns to a playable state.";
+        Assert.False(BrowserSmokeCheck.Required(Ticket(criterion, null)));
+        Assert.True(BrowserSmokeCheck.Required(Ticket(criterion, [Canvas])));
+        Assert.True(BrowserSmokeCheck.CanvasRequired(Ticket(criterion, [Canvas])));
+        Assert.False(BrowserSmokeCheck.CanvasRequired(Ticket(criterion, [new(WorkItemVerificationKinds.BrowserSmoke)])));
+        // An explicit "none" overrides criteria that would have matched the heuristic.
+        Assert.False(BrowserSmokeCheck.Required(Ticket("Render a visible Phaser canvas", [])));
+        Assert.True(BrowserSmokeCheck.Required(Ticket("Render a visible Phaser canvas", null)));
+    }
+
+    [Fact]
+    public void The_assignment_note_names_the_receipt_only_for_declared_tickets()
+    {
+        Assert.Contains("node .csweet/browser-smoke.cjs <build directory> --canvas", BrowserSmokeCheck.AssignmentNote(Ticket("Break", [Canvas])));
+        Assert.Contains("requireCanvas=true", BrowserSmokeCheck.AssignmentNote(Ticket("Break", [Canvas])));
+        Assert.Contains("declares no browser verification", BrowserSmokeCheck.AssignmentNote(Ticket("Break", [])));
+        Assert.Equal("", BrowserSmokeCheck.AssignmentNote(Ticket("Break", null)));
+    }
+
+    [Fact]
+    public async Task Tool_notation_is_never_left_as_a_failing_validation_when_the_check_is_not_required()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-smoke-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "app.js"), "render();");
+            await using var shell = new BoundedWorkspaceShell(new Executor(), TimeSpan.FromSeconds(2));
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance, workspacePath: root);
+            var browser = new BrowserSmokeCheck.Session(root, progress, shell, _ => Task.CompletedTask);
+            var report = new SoftwareDevelopmentOutcome("Checks pass", ["app.js"],
+                [new("npm test", true, 0), new("check_browser_build(buildDirectory=\"dist\", requireCanvas=true)", true, 0)]);
+
+            var bound = browser.BindEvidence(report, required: false);
+
+            Assert.Equal("npm test", Assert.Single(bound.Validations).Command);
+            Assert.Contains(browser.BindEvidence(report, required: true).Validations, x => x.Command == "check_browser_build" && !x.Succeeded);
         }
         finally { Directory.Delete(root, true); }
     }

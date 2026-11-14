@@ -11,7 +11,8 @@ internal static class ProductionEstimation
     private const string RequestType = "video-game.production.role-estimate-request.v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
-    public static AgentCoordinationTurnResult? TryHandle(AgentCoordinationTurnRequest request)
+    public static async Task<AgentCoordinationTurnResult?> TryHandleAsync(AgentCoordinationTurnRequest request,
+        AgentRuntimeContext context, Func<CancellationToken,Task<Microsoft.Extensions.AI.IChatClient>> createClient, CancellationToken ct)
     {
         var turn = request.Transcript.OrderByDescending(x => x.Ordinal)
             .FirstOrDefault(x => x.Artifact?.Type == RequestType);
@@ -37,20 +38,8 @@ internal static class ProductionEstimation
 
         // Use the same initial sizing policy as the production specialist kit, with
         // explicit assumptions. A proposal is not an execution or calendar commitment.
-        var estimates = scope.WorkItems.OrderBy(x => x.WorkItemId).Select(x => new ProductionItemEstimate(
-            x.WorkItemId, Math.Clamp(1m + x.AcceptanceCriteria.Count + x.DependencyWorkItemIds.Count, 1m, 13m),
-            x.Constraints.Count + x.DependencyWorkItemIds.Count > 3 ? "low" : "medium")).ToArray();
-        var digest = Convert.ToHexString(SHA256.HashData(JsonSerializer.SerializeToUtf8Bytes(new
-        {
-            scope.RequestFingerprint, scope.RoleKey, scope.PlanningRevision, scope.PlanningDigest, Estimates = estimates
-        }))).ToLowerInvariant();
-        var proposal = new ProductionEstimateProposal(scope.BoardId, scope.RoleKey, scope.PlanningRevision,
-            scope.PlanningDigest, estimates, estimates.Sum(x => x.EstimatePoints),
-            ["Initial sizing uses one base point plus acceptance-criterion and dependency counts, capped at thirteen points per item.",
-             "Offered capacity covers this candidate batch assuming no competing allocation, approved inputs, an available toolchain, and resolved dependencies. Producer scheduling and QA readiness are still required."], [], digest);
-        return AgentCoordinationTurnResult.Completed($"Submitted {estimates.Length} developer-owned estimates for the exact candidate scope.",
-            new AgentCoordinationArtifactSubmission("video-game.production.role-estimate-capacity-proposal.v1", "1.0",
-                scope.RequestFingerprint, 1, true, JsonSerializer.SerializeToElement(proposal)));
+        using var client=await createClient(ct);
+        return await WorkPlanningJudgments.EstimateAsync(artifact.Payload,scope.RequestFingerprint,context,client,null,ct);
     }
 
     private static bool HasText(IReadOnlyList<string>? values) =>

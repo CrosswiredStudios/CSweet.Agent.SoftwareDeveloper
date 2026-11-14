@@ -1,5 +1,7 @@
+using CSweet.WorkManagement.Contracts;
 using System.Text.Json;
 using CSweet.Agent.SDK;
+using Microsoft.Extensions.AI;
 
 namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
@@ -11,9 +13,11 @@ public sealed class ProductionEstimationTests
     public async Task Producer_request_gets_stable_correlated_developer_estimates(string role)
     {
         var request = Request(role);
-        var agent = new SoftwareDeveloperAgent();
-        // No mutation or model capabilities are registered: this callback must only propose.
-        var context = new AgentTestRuntime().CreateContext();
+        var factory=new EstimateFactory();
+        var agent = new SoftwareDeveloperAgent(factory);
+        var runtime=Runtime();var context=runtime.CreateContext();
+        await agent.ExecuteCapabilityAsync(new(Guid.NewGuid(),AgentConfigurationCapabilities.Update,JsonSerializer.SerializeToElement(
+            new UpdateAgentConfigurationRequest(new Dictionary<string,JsonElement>{{"llmProviderId",JsonSerializer.SerializeToElement(Guid.NewGuid())},{"llmModel",JsonSerializer.SerializeToElement("test")}})),"configure"),context,default);
         var first = await agent.HandleCoordinationTurnAsync(request, context, default);
         var replay = await agent.HandleCoordinationTurnAsync(request, context, default);
         Assert.Equal(AgentCoordinationDispositions.Completed, first.Disposition);
@@ -58,6 +62,31 @@ public sealed class ProductionEstimationTests
         cancellation.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => new SoftwareDeveloperAgent()
             .HandleCoordinationTurnAsync(Request("game-engineer"), new AgentTestRuntime().CreateContext(), cancellation.Token));
+    }
+
+    private static AgentTestRuntime Runtime()
+    {
+        var states=new Dictionary<string,AgentOperatingStateResponse>();
+        return new AgentTestRuntime()
+            .RegisterCapability<CSweet.WorkManagement.Contracts.WorkBoardReference,CSweet.WorkManagement.Contracts.WorkBoardDetail>(WorkItemCapabilities.Read,(_,_)=>Task.FromResult(JsonSerializer.Deserialize<CSweet.WorkManagement.Contracts.WorkBoardDetail>("{}")! with {Items=[]}))
+            .RegisterCapability<object,PersonalTodoDirectory>(PersonalTodoCapabilities.Read,(_,_)=>Task.FromResult(new PersonalTodoDirectory([])))
+            .RegisterCapability<AgentOperatingStateReadRequest,AgentOperatingStateReadResponse>(PlatformCapabilities.AgentOperatingStateRead,(r,_)=>Task.FromResult(new AgentOperatingStateReadResponse(states.GetValueOrDefault(r.StateKey))))
+            .RegisterCapability<AgentOperatingStateWriteRequest,AgentOperatingStateResponse>(PlatformCapabilities.AgentOperatingStateWrite,(r,_)=> {
+                var now=DateTimeOffset.UtcNow;var value=new AgentOperatingStateResponse(Guid.NewGuid(),r.StateKey,r.SchemaId,r.SchemaVersion,r.Status,r.SourceRevisions,r.ConditionCodes,r.DecisionFingerprint,r.OpenCommitmentCorrelations,r.AttentionReviewId,r.Payload,1,now,now);
+                states[r.StateKey]=value;return Task.FromResult(value);
+            });
+    }
+    private sealed class EstimateFactory:IAgentLlmClientFactory
+    {
+        public Task<IChatClient> CreateChatClientAsync(AgentLlmSelection selection,CancellationToken ct=default)=>Task.FromResult<IChatClient>(new Client());
+        private sealed class Client:IChatClient
+        {
+            public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,ChatOptions? options=null,CancellationToken cancellationToken=default)=>Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant,
+                "{\"estimates\":[{\"points\":5,\"confidence\":\"medium\",\"rationale\":\"Interaction and verification work\"}],\"availableCapacity\":3,\"assumptions\":[\"Existing commitments limit capacity\"],\"blockers\":[]}")));
+            public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,ChatOptions? options=null,CancellationToken cancellationToken=default)=>throw new NotSupportedException();
+            public object? GetService(Type serviceType,object? serviceKey=null)=>null;
+            public void Dispose(){}
+        }
     }
 
     private static AgentCoordinationTurnRequest Request(string role, string scenario = "valid")

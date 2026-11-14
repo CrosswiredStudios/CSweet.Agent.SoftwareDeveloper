@@ -4,7 +4,7 @@ using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
-internal sealed class DevelopmentCoordinationService(ProjectIntakeService projects)
+internal sealed class DevelopmentCoordinationService(ProjectIntakeService projects, DevelopmentChatClientProvider clients)
 {
     private readonly ProjectIntakeService _projects = projects;
     internal async Task<AgentCoordinationTurnResult> HandleAsync(
@@ -13,7 +13,7 @@ internal sealed class DevelopmentCoordinationService(ProjectIntakeService projec
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (ProductionEstimation.TryHandle(request) is { } estimateResult) return estimateResult;
+        if (await ProductionEstimation.TryHandleAsync(request,context,ct=>clients.CreateAsync(context,ct),cancellationToken) is { } estimateResult) return estimateResult;
         if (request.SourceKind == "ProjectIntake")
         {
             var artifact = request.Transcript.Select(x => x.Artifact).FirstOrDefault(x => x?.Type == "project-manager-assistance.v1");

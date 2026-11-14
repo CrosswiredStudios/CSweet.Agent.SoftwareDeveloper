@@ -15,9 +15,34 @@ internal static class BrowserSmokeCheck
         "Keep test-results/ ignored by source control; checkpoints retain it. Reuse the project's build tool or a minimal static-copy recipe; " +
         "do not write a module-graph packager for a placeholder.";
 
+    /// <summary>
+    /// Whether this ticket needs a bound browser receipt. A planning declaration is authoritative, so the engineer,
+    /// the technical reviewer and QA apply one rule; the text heuristics only cover tickets planned before it existed.
+    /// </summary>
     internal static bool Required(WorkItem item) =>
-        item.Development is { } development && Required(development.AcceptanceCriteria,
-            string.Join("\n", new[] { item.Description ?? "" }.Concat(development.Constraints ?? [])));
+        WorkItemVerifications.IsDeclared(item.Planning)
+            ? WorkItemVerifications.BrowserSmoke(item.Planning) is not null
+            : item.Development is { } development && Required(development.AcceptanceCriteria,
+                string.Join("\n", new[] { item.Description ?? "" }.Concat(development.Constraints ?? [])));
+
+    internal static bool CanvasRequired(WorkItem item) =>
+        WorkItemVerifications.IsDeclared(item.Planning)
+            ? WorkItemVerifications.BrowserSmoke(item.Planning)?.RequireCanvas == true
+            : Required(item) && System.Text.RegularExpressions.Regex.IsMatch(string.Join("\n", item.Development!.AcceptanceCriteria),
+                @"\b(Phaser|canvas)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    /// <summary>Tells the model up front what this ticket's declaration requires. Undeclared tickets get no note.</summary>
+    internal static string AssignmentNote(WorkItem item)
+    {
+        if (!WorkItemVerifications.IsDeclared(item.Planning)) return "";
+        if (WorkItemVerifications.BrowserSmoke(item.Planning) is not { } browser)
+            return "This ticket declares no browser verification. A browser check is not required for publication or review.";
+        var canvas = browser.RequireCanvas;
+        return $"This ticket declares browser verification{(canvas ? " with a visible canvas" : "")}. After your last source edit, build the static output " +
+            $"and call check_browser_build{(canvas ? " with requireCanvas=true" : "")}. Its receipt (`{WorkItemVerificationKinds.BrowserSmokeReceiptCommand} <build directory>{(canvas ? " --canvas" : "")}`) is added to your " +
+            "validations automatically; the technical reviewer and QA check that receipt. Do not record the tool call as a validation, commit screenshots, " +
+            "or write extra verifiers for it.";
+    }
 
     internal static bool Required(IEnumerable<string> criteria, string context)
     {
@@ -38,7 +63,7 @@ internal static class BrowserSmokeCheck
         if (string.IsNullOrWhiteSpace(directory) || directory.Length > 160 || Path.IsPathRooted(directory) ||
             directory.Replace('\\', '/').Split('/').Any(x => x is ".." or "" || x.Any(c => !char.IsAsciiLetterOrDigit(c) && c is not ('.' or '_' or '-'))))
             throw new ArgumentException("Supply a workspace-relative build directory such as dist.");
-        return $"node .csweet/browser-smoke.cjs {directory.Replace('\\', '/')}" + (requireCanvas ? " --canvas" : "");
+        return $"{WorkItemVerificationKinds.BrowserSmokeReceiptCommand} {directory.Replace('\\', '/')}" + (requireCanvas ? " --canvas" : "");
     }
 
     internal sealed class Session(string root, WorkspaceProgress progress, BoundedWorkspaceShell shell,
@@ -61,7 +86,13 @@ internal static class BrowserSmokeCheck
             return result.Output;
         }, "check_browser_build", "Launch the static build in real prepared Chromium; record JS/asset failures, visible surface, and screenshot. No downloads or custom test scripts. Use requireCanvas=true for game canvas criteria. Returns actual command evidence; failed/missing browser is never a pass.");
 
-        internal SoftwareDevelopmentOutcome RequireEvidence(SoftwareDevelopmentOutcome outcome)
+        internal SoftwareDevelopmentOutcome RequireEvidence(SoftwareDevelopmentOutcome outcome) => BindEvidence(outcome, required: true);
+
+        /// <summary>
+        /// Always replaces tool-call notation with the trusted receipt when the check passed on current source, so a
+        /// passing check is never lost. Only a required check adds the failing "missing receipt" entry.
+        /// </summary>
+        internal SoftwareDevelopmentOutcome BindEvidence(SoftwareDevelopmentOutcome outcome, bool required)
         {
             const string missing = "check_browser_build";
             // Model tool-call notation is not a shell command. Replace it with the trusted
@@ -70,7 +101,7 @@ internal static class BrowserSmokeCheck
                 x.Command.TrimStart(), @"^check_browser_build(?:\s|\(|$)")).ToList();
             if (Passed && !validations.Any(x => x.Command == successfulCommand))
                 validations.Add(new(successfulCommand!, true, 0, "Observed current-source Chromium loading and surface check; independent QA remains required."));
-            if (!Passed) validations.Add(new(missing, false, -1,
+            if (required && !Passed) validations.Add(new(missing, false, -1,
                 "No current-source real-browser receipt. Call check_browser_build for the static output, fix observed errors, and retain its actual result; static checks do not replace browser evidence."));
             return outcome with { Validations = validations };
         }
