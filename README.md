@@ -3,7 +3,7 @@
   <h1>Daniel Kim</h1>
   <p><strong>Software Developer @ C-Sweet · Turning approved requirements into reviewable, tested software</strong></p>
   <p>
-    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.4.0
+    First-party C-Sweet protocol-v2 agent · <code>com.csweet.software-developer</code> · v2.4.1
   </p>
   <p><strong>Help build this future.</strong> <a href="https://ko-fi.com/O7F226H4A2">Support C-Sweet's development on Ko-fi.</a></p>
   <p>
@@ -53,7 +53,7 @@ block safely. This parser correction does not waive criteria or authorize histor
 First-party C-Sweet engineering agent that implements approved software requirements while keeping
 changes reviewable, tested, and aligned with the product plan.
 
-The package ID is `com.csweet.software-developer`; this implementation is version `2.4.0`
+The package ID is `com.csweet.software-developer`; this implementation is version `2.4.1`
 and uses C-Sweet manifest protocol v2.
 
 ### Experience
@@ -591,3 +591,13 @@ Resolve committed merge-conflict markers and restore the complete developer core
 Model context preservation: older tool results remain intact until the configured input capacity
 (context window minus generation capacity) fills. The former 24k/16k early compaction thresholds
 are removed. Accepted user scope and recent tool groups remain preserved when compaction is needed.
+
+## CI dependency fallback
+
+GitHub Actions uses the pinned SDK and WorkManagement.Contracts versions from NuGet when available.
+An unpublished version is packed from its reviewed full commit in `build/ci-dependencies.json`.
+Update that commit pin together with any SDK or contracts dependency bump; CI rejects mismatched versions.
+Packages stay local to the job and are never pushed to NuGet. The job summary and dependency-provenance
+artifact record origins, source commits and SHA-256 hashes. Private source repositories require the optional
+`CSWEET_DEPENDENCY_READ_TOKEN` Actions secret with read access to the dependency repositories.
+Run `python3 scripts/test-ci-dependencies.py` for the offline resolver regression tests.
