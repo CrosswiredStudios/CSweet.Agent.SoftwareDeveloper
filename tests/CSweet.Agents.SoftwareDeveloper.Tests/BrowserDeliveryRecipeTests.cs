@@ -5,6 +5,59 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class BrowserDeliveryRecipeTests
 {
+    private sealed class ChromiumFactAttribute : FactAttribute
+    {
+        internal static string? Executable => new[] { Environment.GetEnvironmentVariable("CHROMIUM_PATH"),
+            Environment.GetEnvironmentVariable("CHROME_BIN"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
+                "Google", "Chrome", "Application", "chrome.exe"), "/usr/bin/chromium", "/usr/bin/google-chrome" }.FirstOrDefault(File.Exists);
+        public ChromiumFactAttribute()
+        {
+            if (Executable is null) Skip = "Set CHROMIUM_PATH to run the real browser export regression.";
+        }
+    }
+
+    [ChromiumFact]
+    public async Task Animated_page_exports_its_actual_record_and_missing_record_has_a_deadline()
+    {
+        var root = Directory.CreateTempSubdirectory("csweet-export-test-");
+        try
+        {
+            await BrowserDeliveryRecipe.PrepareGuidanceAsync(root.FullName, CancellationToken.None);
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "index.html"), """
+                <pre id="record"></pre><script>
+                let frames = 0;
+                requestAnimationFrame(function step() {
+                    if (++frames === 12) document.getElementById('record').textContent = JSON.stringify({frames});
+                    requestAnimationFrame(step);
+                });
+                </script>
+                """);
+            await File.WriteAllTextAsync(Path.Combine(root.FullName, "test.mjs"), """
+                import assert from 'node:assert/strict';
+                import {readBrowserRecord} from './.csweet/browser-record.mjs';
+                const page = new URL('./index.html', import.meta.url).href;
+                assert.deepEqual(await readBrowserRecord(page, 'record', 15000), {frames: 12});
+                await assert.rejects(readBrowserRecord(page, 'missing', 2000), /Browser record deadline/);
+                """);
+            var start = new ProcessStartInfo("node") { WorkingDirectory = root.FullName, UseShellExecute = false,
+                CreateNoWindow = true, RedirectStandardError = true };
+            start.ArgumentList.Add("test.mjs");
+            start.Environment["CHROMIUM_PATH"] = ChromiumFactAttribute.Executable;
+            using var process = Process.Start(start)!;
+            try
+            {
+                var errors = process.StandardError.ReadToEndAsync();
+                await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(30));
+                Assert.True(process.ExitCode == 0, await errors);
+            }
+            finally
+            {
+                if (!process.HasExited) { process.Kill(entireProcessTree: true); await process.WaitForExitAsync(); }
+            }
+        }
+        finally { root.Delete(recursive: true); }
+    }
+
     [Fact]
     public async Task Standard_server_serves_root_assets_and_safe_error_paths_then_shuts_down()
     {

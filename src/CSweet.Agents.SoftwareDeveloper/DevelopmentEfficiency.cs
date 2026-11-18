@@ -28,9 +28,9 @@ internal static class DevelopmentEfficiency
 
 #pragma warning disable MAAI001
     internal static ToolResultCompactionStrategy ToolHistory(int inputBudget) => new(
-        CompactionTriggers.TokensExceed(Math.Max(1, inputBudget)),
-        minimumPreservedGroups: 4,
-        target: CompactionTriggers.TokensBelow(Math.Max(1, inputBudget)))
+        CompactionTriggers.TokensExceed(Math.Clamp(inputBudget, 1, 32_000)),
+        minimumPreservedGroups: 2,
+        target: CompactionTriggers.TokensBelow(Math.Clamp(inputBudget, 1, 20_000)))
     {
         // Only old tool-call groups are shortened. User assignments, criteria, constraints,
         // manager directions and review findings are never truncated by this strategy.

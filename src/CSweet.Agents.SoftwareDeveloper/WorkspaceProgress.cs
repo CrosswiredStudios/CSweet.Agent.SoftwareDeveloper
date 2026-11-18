@@ -100,7 +100,10 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
             "npm test" or "npm run test" => "Tests", "npm ci" => "Install dependencies",
             "npm run ci" => "Validation", _ => "Workspace command"
         };
-        await PublishAsync(operation, label, "started", null, repeated, token, digest);
+        // Only simple project script invocations can appear in recovery feedback. Other arguments
+        // (environment values, URLs and inline code in particular) stay out of ticket comments.
+        var publicCommand = SafeScriptCommand(command) ? command : null;
+        await PublishAsync(operation, label, "started", null, repeated, token, digest, publicCommand);
         ShellResult result;
         var source = workspacePath is null ? null : WorkspaceValidation.SourceFingerprint(workspacePath);
         try { result = await shell.RunAsync(command, token); }
@@ -123,7 +126,12 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         return (result.FormatForModel(), !result.TimedOut && result.ExitCode == 0);
     }
 
-    private async Task PublishAsync(int operation, string label, string phase, int? exitCode, int repeated, CancellationToken token, string? commandDigest = null)
+    internal static bool SafeScriptCommand(string command) => command.Length <= 180 &&
+        System.Text.RegularExpressions.Regex.IsMatch(command,
+            @"\A(?:node|python3?|bash) (?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.(?:mjs|cjs|js|py|sh)(?: (?:[A-Za-z0-9_-]+/)*[A-Za-z0-9_-]+\.(?:json|html|md))?\z",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private async Task PublishAsync(int operation, string label, string phase, int? exitCode, int repeated, CancellationToken token, string? commandDigest = null, string? scriptCommand = null)
     {
         token.ThrowIfCancellationRequested();
         // Reserve room for SDK/model progress in the bounded inbox. One explicit notice replaces
@@ -137,7 +145,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
                 $" · operation {operation}; {Volatile.Read(ref _fileUpdates)} file update attempts returned." +
                 (repeated > 1 ? $" Same command run {repeated} times consecutively." : "");
             if (operation > limit) message = "Workspace progress reporting limit reached; later local operations are not shown. Work continues.";
-            await report(new { itemId, kind = "workspace-tool", message, operation, phase, exitCode, repeated, commandDigest }, token);
+            await report(new { itemId, kind = "workspace-tool", message, operation, phase, exitCode, repeated, commandDigest, scriptCommand }, token);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
         catch (Exception)

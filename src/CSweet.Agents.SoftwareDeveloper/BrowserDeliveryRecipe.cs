@@ -4,11 +4,14 @@ namespace CSweet.Agents.SoftwareDeveloper;
 internal static class BrowserDeliveryRecipe
 {
     internal const string GuidanceReference = "A reusable browser serving/packaging recipe is available in .csweet/browser-delivery-recipe.md. " +
-        "Read it only if this ticket requires serving or packaging. Its examples do not add Dockerfiles, HTTP servers, deployment, or extra validation to the accepted ticket scope.";
+        "Read it only if this ticket requires serving or packaging. For a required export of JSON emitted by a live page, .csweet/browser-record.mjs supplies readBrowserRecord(pageUrl, elementId) with a single Chromium launch and a wall-clock deadline. Copy it beside a deliverable exporter if it must run on a clean checkout. Do not wait for an animating page to finish or dump its entire DOM. Its serving examples do not add Dockerfiles, HTTP servers, deployment, or extra validation to the accepted ticket scope.";
 
     internal static async Task PrepareGuidanceAsync(string workspacePath, CancellationToken token)
     {
         Directory.CreateDirectory(Path.Combine(workspacePath, ".csweet"));
+        using var recipe = typeof(BrowserDeliveryRecipe).Assembly.GetManifestResourceStream("browser-record.mjs")!;
+        await using (var target = File.Create(Path.Combine(workspacePath, ".csweet", "browser-record.mjs")))
+            await recipe.CopyToAsync(target, token);
         await File.WriteAllTextAsync(Path.Combine(workspacePath, ".csweet", "browser-delivery-recipe.md"),
             Guidance, new System.Text.UTF8Encoding(false), token);
     }

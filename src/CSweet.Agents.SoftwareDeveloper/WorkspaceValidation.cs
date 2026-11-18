@@ -22,6 +22,7 @@ internal sealed class WorkspaceValidation
         "Use project test scripts (for example node scripts/verify-build.mjs or python3 tests/verify_assets.py) " +
         "that assert the required behavior and exit 0 only when it holds. A grep absence check normally exits 1 when no match exists; " +
         "express that expectation in an assertion script instead of reporting an intentional failure or masking it with || true. " +
+        "Generate deliverable evidence before final verification. Declared checks must validate the retained output or write fresh captures to temporary storage. " +
         "A successful file listing alone does not assert that prohibited files are absent.";
 
     internal static bool IsStandalone(string command)
@@ -127,6 +128,13 @@ internal sealed class WorkspaceValidation
             if (!_receipts.TryGetValue(declared.Command, out var receipt) || receipt.Source != source)
             {
                 var result = await shell.RunAsync(declared.Command, token);
+                if (SourceFingerprint(root) != source)
+                {
+                    // The command's exit code describes a different tree. A bounded repair can
+                    // validate the real output without regenerating the files it is publishing.
+                    return outcome with { Validations = [new(declared.Command, false, -1,
+                        "This check rewrote source or evidence during final verification. Keep the generated output and use a read-only validation on it, or direct fresh captures to temporary storage.")] };
+                }
                 Record(declared.Command, result, source);
                 receipt = _receipts[declared.Command];
             }

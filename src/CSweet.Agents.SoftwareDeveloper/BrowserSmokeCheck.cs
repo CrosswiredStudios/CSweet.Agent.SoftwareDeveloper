@@ -74,7 +74,18 @@ internal static class BrowserSmokeCheck
         private string? successfulCommand;
         internal bool Passed => successfulSource is not null && successfulInputs == progress.Validations.InputRevision &&
             successfulSource == WorkspaceValidation.SourceFingerprint(root);
-        internal AIFunction Tool() => AIFunctionFactory.Create(async (string buildDirectory, bool requireCanvas, CancellationToken token) =>
+        internal AIFunction Tool() => AIFunctionFactory.Create(RunAsync, "check_browser_build",
+            "Launch the static build in real prepared Chromium; record JS/asset failures, visible surface, and screenshot. No downloads or custom test scripts. Use requireCanvas=true for game canvas criteria. Returns actual command evidence; failed/missing browser is never a pass.");
+
+        internal Task<string> CheckScenarioOutputAsync(string directory, CancellationToken token)
+        {
+            var command = Command(directory, canvasRequired);
+            if (Passed && (successfulCommand == command || successfulCommand == command + " --canvas"))
+                return Task.FromResult("The current build already has a passing smoke check.");
+            return RunAsync(directory, canvasRequired, token);
+        }
+
+        private async Task<string> RunAsync(string buildDirectory, bool requireCanvas, CancellationToken token)
         {
             successfulSource = null;
             await PrepareAsync(root, token); // Restore trusted helper if project content changed it.
@@ -84,7 +95,7 @@ internal static class BrowserSmokeCheck
             { successfulSource = source; successfulInputs = progress.Validations.InputRevision; successfulCommand = Command(buildDirectory, requireCanvas || canvasRequired); }
             await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
             return result.Output;
-        }, "check_browser_build", "Launch the static build in real prepared Chromium; record JS/asset failures, visible surface, and screenshot. No downloads or custom test scripts. Use requireCanvas=true for game canvas criteria. Returns actual command evidence; failed/missing browser is never a pass.");
+        }
 
         internal SoftwareDevelopmentOutcome RequireEvidence(SoftwareDevelopmentOutcome outcome) => BindEvidence(outcome, required: true);
 

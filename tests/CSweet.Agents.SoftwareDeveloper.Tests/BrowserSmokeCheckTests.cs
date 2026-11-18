@@ -137,6 +137,46 @@ public sealed class BrowserSmokeCheckTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Updated_scenario_report_runs_required_smoke_on_final_source(bool smokeSucceeds)
+    {
+        var root = Directory.CreateTempSubdirectory("csweet-scenario-publication-");
+        try
+        {
+            var executor = new Executor { ExitCode = 0 };
+            await using var shell = new BoundedWorkspaceShell(executor, TimeSpan.FromSeconds(2));
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance, workspacePath: root.FullName);
+            var smoke = new BrowserSmokeCheck.Session(root.FullName, progress, shell, _ => Task.CompletedTask, canvasRequired: true);
+            var scenario = new BrowserScenarioCheck.Session(root.FullName, progress, shell, _ => Task.CompletedTask, smoke);
+            await smoke.CheckScenarioOutputAsync("build", default);
+            Assert.True(smoke.Passed);
+            var ran = new List<string>();
+            shell.AfterCommand = async (command, _, token) =>
+            {
+                ran.Add(command);
+                if (command.Contains("browser-scenarios"))
+                {
+                    await File.WriteAllTextAsync(Path.Combine(root.FullName, "observation.md"), "New real measurements", token);
+                    executor.ExitCode = smokeSucceeds ? 0 : 1;
+                }
+            };
+            await scenario.Tool().InvokeAsync(new Microsoft.Extensions.AI.AIFunctionArguments {
+                ["buildDirectory"] = "build", ["observationRecords"] = new[] { "observation.md" } });
+            Assert.True(scenario.Passed);
+            Assert.Equal(smokeSucceeds, smoke.Passed);
+            Assert.Equal(2, ran.Count);
+            Assert.Equal("node .csweet/browser-smoke.cjs build --canvas", ran[1]);
+            if (smokeSucceeds)
+            {
+                await smoke.CheckScenarioOutputAsync("build", default);
+                Assert.Equal(2, ran.Count);
+            }
+        }
+        finally { root.Delete(recursive: true); }
+    }
+
     private sealed class Executor : ShellExecutor
     {
         internal int ExitCode = 1;

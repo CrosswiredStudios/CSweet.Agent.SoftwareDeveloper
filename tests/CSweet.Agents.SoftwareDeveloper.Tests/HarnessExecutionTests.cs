@@ -132,6 +132,38 @@ public sealed class HarnessExecutionTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task Publication_repairs_a_source_writing_check_and_verifies_the_retained_capture()
+    {
+        var root = Directory.CreateTempSubdirectory("csweet-publication-");
+        try
+        {
+            var record = Path.Combine(root.FullName, "setup.json");
+            var repairs = 0;
+            var executor = new ValidationExecutor();
+            await using var shell = new BoundedWorkspaceShell(executor, TimeSpan.FromSeconds(2));
+            shell.AfterCommand = async (command, _, token) =>
+            {
+                if (command == "node capture.mjs") await File.WriteAllTextAsync(record, "produced by capture", token);
+                else Assert.Equal("produced by capture", await File.ReadAllTextAsync(record, token));
+            };
+            var outcome = new SoftwareDevelopmentOutcome("Export", ["setup.json"], [new("node capture.mjs", true, 0)]);
+            var validated = await new WorkspaceValidation().VerifyWithRepairAsync(outcome, shell, root.FullName, (failed, _) =>
+            {
+                repairs++;
+                var rejected = Assert.Single(failed.Validations);
+                Assert.False(rejected.Succeeded);
+                Assert.Equal("node capture.mjs", rejected.Command);
+                Assert.Contains("rewrote", rejected.DiagnosticExcerpt);
+                return Task.FromResult(outcome with { Validations = [new("node validate.mjs setup.json", true, 0)] });
+            }, default);
+            Assert.True(Assert.Single(validated.Validations).Succeeded);
+            Assert.Equal(1, repairs);
+            Assert.Equal(2, executor.Calls);
+        }
+        finally { root.Delete(recursive: true); }
+    }
+
     private sealed class ValidationExecutor : Microsoft.Agents.AI.Tools.Shell.ShellExecutor
     {
         public int Calls;
@@ -428,6 +460,26 @@ public sealed class HarnessExecutionTests
             Assert.Equal(0, client.Results);
         }
         finally { Directory.Delete(root, true); }
+    }
+
+    [Fact]
+    public async Task Persistent_provider_context_error_stops_after_one_clean_session_and_preserves_its_cause()
+    {
+        var root = Directory.CreateTempSubdirectory("csweet-context-");
+        try
+        {
+            using var client = new ScriptedClient(false, beforeCall: _ => throw new HttpRequestException(
+                "Provider call failed", new InvalidOperationException("engine reported request exceeds the context window")));
+            await using var shell = SoftwareDeveloperHarness.CreateShell(root.FullName);
+            var harness = client.AsHarnessAgent(SoftwareDeveloperHarness.CreateOptions("Daniel", root.FullName, shell, null));
+            var session = await harness.CreateSessionAsync();
+            var failure = await Assert.ThrowsAnyAsync<Exception>(() => SoftwareDeveloperHarness.RunImplementationAsync(
+                harness, session, "Continue the retained assignment.", root.FullName, default));
+            Assert.True(SoftwareDeveloperHarness.IsContextCapacityFailure(failure));
+            Assert.False(SoftwareDeveloperHarness.IsTransientTransportFailure(failure));
+            Assert.Equal(2, client.Calls);
+        }
+        finally { root.Delete(recursive: true); }
     }
 
     [Fact]

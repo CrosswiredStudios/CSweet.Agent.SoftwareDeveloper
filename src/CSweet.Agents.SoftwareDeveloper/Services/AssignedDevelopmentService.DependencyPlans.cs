@@ -1,12 +1,32 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Extensions.AI;
 using CSweet.WorkManagement.Contracts;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
 internal sealed partial class AssignedDevelopmentService
 {
+    // Keep the exact hash-verified source available for reference without replaying a whole
+    // research document in every model turn. Short documents still travel inline.
+    internal const int DocumentPageCharacters = 4096;
+    internal static AIFunction DependencyReader(IReadOnlyList<DependencyPlan> plans) =>
+        AIFunctionFactory.Create((Guid revisionId, int offset, string? find) =>
+        {
+            var document = plans.SingleOrDefault(p => p.RevisionId == revisionId);
+            if (document is null || offset < 0 || offset > document.Content.Length)
+                return "Unknown assignment revision or invalid character offset.";
+            if (!string.IsNullOrWhiteSpace(find))
+            {
+                offset = document.Content.IndexOf(find, offset, StringComparison.OrdinalIgnoreCase);
+                if (offset < 0) return "Text not found.";
+            }
+            var length = Math.Min(DocumentPageCharacters, document.Content.Length - offset);
+            return $"Revision {revisionId:D}, characters {offset} through {offset + length} of {document.Content.Length}:\n" +
+                document.Content.Substring(offset, length);
+        }, "read_dependency_document", "Read the exact approved assignment dependency by revisionId and zero-based character offset. Optionally find a heading or phrase from that offset.");
+
     internal static IReadOnlyList<DependencyPlan> ReadDependencyPlans(WorkExecutionAssignment assignment, WorkItem item)
     {
         var references = (assignment.Evidence ?? []).Where(x => x.Kind == "dependency-document.v1").ToArray();

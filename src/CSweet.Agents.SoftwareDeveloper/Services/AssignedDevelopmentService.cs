@@ -69,6 +69,10 @@ internal sealed partial class AssignedDevelopmentService(
                 error is DevelopmentInfrastructureException ? "development.infrastructure" : "development.progress", retryable: true);
         }
         catch (OperationCanceledException) { throw; }
+        catch (Exception error) when (SoftwareDeveloperHarness.IsContextCapacityFailure(error))
+        {
+            return AgentWorkResult.Failure("The LLM provider could not fit the request and response budget in its context window. Reduce the input or maximum output tokens, or select a larger context window.", "llm.context_length", retryable: false);
+        }
         catch (Exception error) when (DevelopmentTransport.IsTransient(error) ||
             error is WorkspaceCheckpointException { InnerException: { } transport } && DevelopmentTransport.IsTransient(transport))
         {
@@ -210,6 +214,8 @@ internal sealed partial class AssignedDevelopmentService(
         harnessOptions.ChatOptions!.Tools = [progress.ShellTool(shell), progress.ShellBatchTool(shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                 resumeSummary: progress.Validations.Summary(workspacePath))), sizing.Tool(shell)];
+        if (dependencyPlans.Any(p => p.Content.Length > DocumentPageCharacters))
+            harnessOptions.ChatOptions.Tools.Add(DependencyReader(dependencyPlans));
         var browser = new BrowserSmokeCheck.Session(workspacePath, progress, shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                 resumeSummary: progress.Validations.Summary(workspacePath)),
@@ -217,7 +223,7 @@ internal sealed partial class AssignedDevelopmentService(
         harnessOptions.ChatOptions.Tools.Add(browser.Tool());
         var scenarios = new BrowserScenarioCheck.Session(workspacePath, progress, shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
-                resumeSummary: progress.Validations.Summary(workspacePath)));
+                resumeSummary: progress.Validations.Summary(workspacePath)), BrowserSmokeCheck.Required(item) ? browser : null);
         harnessOptions.ChatOptions.Tools.Add(scenarios.Tool());
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(workflow.Configure(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken)))));
@@ -244,7 +250,7 @@ internal sealed partial class AssignedDevelopmentService(
                 workspacePath,
                 cancellationToken, token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
                     resumeSummary: progress.Validations.Summary(workspacePath)),
-                () => discussion.Pending is not null, shell, workflow);
+                () => discussion.Pending is not null, shell, workflow, verifyOnEntry: managerDirections.Count == 0);
         }
         catch (Exception error) when (error is not OperationCanceledException && discussion.Pending is not null)
         {
@@ -393,7 +399,15 @@ internal sealed partial class AssignedDevelopmentService(
                 constraints = item.Development.Constraints ?? [],
                 qaFindings = item.Development.ReworkFindings ?? [],
                 architectureGuidance = architectureGuidance ?? [],
-                dependencyPlans = dependencyPlans ?? [],
+                dependencyPlans = (dependencyPlans ?? []).Select(p => new
+                {
+                    p.SourceWorkItemId, p.StageExecutionId, p.AttemptId, p.ArtifactId, p.RevisionId, p.Sha256, p.Title,
+                    characters = p.Content.Length,
+                    content = p.Content.Length <= DocumentPageCharacters ? p.Content :
+                        "Use read_dependency_document with this revisionId to read applicable sections. Headings: " +
+                        string.Join(" | ", p.Content.Split('\n').Where(line => line.StartsWith('#'))
+                            .Take(24).Select(line => line.Trim()[..Math.Min(line.Trim().Length, 96)]))
+                }),
                 managerDirections = managerDirections ?? [],
                 reviewFeedback = (reviewFeedback ?? []).Select((review, reviewIndex) => new
                 {

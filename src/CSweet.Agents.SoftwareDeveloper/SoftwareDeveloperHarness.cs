@@ -13,7 +13,7 @@ internal static class SoftwareDeveloperHarness
     internal static async Task RunImplementationAsync(
         AIAgent harness, AgentSession session, string prompt, string workspacePath, CancellationToken cancellationToken,
         Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null,
-        BoundedWorkspaceShell? shell = null, DevelopmentWorkflow? workflow = null)
+        BoundedWorkspaceShell? shell = null, DevelopmentWorkflow? workflow = null, bool verifyOnEntry = true)
     {
         const int maximumTurns = 6;
         if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
@@ -31,6 +31,7 @@ internal static class SoftwareDeveloperHarness
         var activeSession = session;
         var transportRecoveries = 0;
         var progressRecoveries = 0;
+        var contextRecovered = false;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
             AgentResponse response;
@@ -38,7 +39,7 @@ internal static class SoftwareDeveloperHarness
             {
                 try
                 {
-                    if (turn == 0 && workflow?.Plan is { } retained && workflow.VerifyPlannedSteps is { } verify &&
+                    if (turn == 0 && verifyOnEntry && workflow?.Plan is { } retained && workflow.VerifyPlannedSteps is { } verify &&
                         await verify(retained, checkpointCancellation.Token) is { } results)
                         prompt += "\nExisting retained verification executed before further inspection:\n" + results;
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
@@ -96,8 +97,9 @@ internal static class SoftwareDeveloperHarness
                 continue;
             }
             catch (Exception error) when (error is not OperationCanceledException &&
-                IsContextCapacityFailure(error) && turn < maximumTurns - 1)
+                IsContextCapacityFailure(error) && !contextRecovered && turn < maximumTurns - 1)
             {
+                contextRecovered = true;
                 // Source-of-truth state is the retained workspace. Start a clean model session
                 // when accumulated messages exceed either the broker or provider context limit.
                 activeSession = await harness.CreateSessionAsync(cancellationToken);
@@ -167,7 +169,8 @@ internal static class SoftwareDeveloperHarness
         if (error is WorkspaceCheckpointException) return false;
         for (Exception? current = error; current is not null; current = current.InnerException)
         {
-            if (current.Message.Contains("exceeds the message, text, or tool limit", StringComparison.OrdinalIgnoreCase) ||
+            if (current is CSweet.Agent.SDK.PlatformCapabilityException { FailureCode: "llm.context_length" } ||
+                current.Message.Contains("exceeds the message, text, or tool limit", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("exceeds the model's context capacity", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("context length", StringComparison.OrdinalIgnoreCase) ||
                 current.Message.Contains("context window", StringComparison.OrdinalIgnoreCase))
@@ -178,7 +181,7 @@ internal static class SoftwareDeveloperHarness
 
     internal static bool IsTransientTransportFailure(Exception error)
     {
-        return DevelopmentTransport.IsTransient(error);
+        return !IsContextCapacityFailure(error) && DevelopmentTransport.IsTransient(error);
     }
     internal static HarnessAgentOptions CreateOptions(
         string name,

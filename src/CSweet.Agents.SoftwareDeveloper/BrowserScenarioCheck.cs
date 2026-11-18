@@ -24,7 +24,7 @@ internal static class BrowserScenarioCheck
     }
 
     internal sealed class Session(string root, WorkspaceProgress progress, BoundedWorkspaceShell shell,
-        Func<CancellationToken, Task> checkpoint)
+        Func<CancellationToken, Task> checkpoint, BrowserSmokeCheck.Session? requiredSmoke = null)
     {
         private string? successfulSource;
         private long successfulInputs;
@@ -40,6 +40,7 @@ internal static class BrowserScenarioCheck
             var command = BrowserScenarios.Command(buildDirectory, observationRecords);
             await PrepareAsync(root, token); // Restore the trusted runner if project content changed it.
             var result = await progress.RunShellCoreAsync(shell, command, token);
+            var output = result.Output;
             if (result.Succeeded)
             {
                 // The run regenerates the records' measured sections; that is its output, not a later edit. Bind its receipt
@@ -48,9 +49,11 @@ internal static class BrowserScenarioCheck
                 progress.Validations.Record(command, new ShellResult(result.Output, "", 0, TimeSpan.Zero, false), successfulSource);
                 successfulInputs = progress.Validations.InputRevision;
                 successfulCommand = command;
+                if (requiredSmoke is not null)
+                    output += "\nBrowser smoke on the final scenario output: " + await requiredSmoke.CheckScenarioOutputAsync(buildDirectory, token);
             }
             await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
-            return result.Output;
+            return output;
         }, "run_browser_scenarios",
             "Run the shared browser scenario runner on the built static output in real prepared Chromium: it opens the build with " +
             "?csweet-scenarios, calls window.csweetScenarios.run(), and judges every check from its expected and observed values " +

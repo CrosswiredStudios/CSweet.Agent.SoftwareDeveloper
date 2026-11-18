@@ -41,6 +41,7 @@ public sealed class DevelopmentEfficiencyTests
         var before = history.IncludedTokenCount;
         Assert.True(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
         Assert.True(history.IncludedTokenCount < before * 0.6);
+        Assert.InRange(history.IncludedTokenCount, 1, 64_000);
         var retained = history.GetIncludedMessages();
         Assert.Contains(retained, x => x.Role == ChatRole.User && x.Text == accepted);
         Assert.Contains(retained, x => x.Role == ChatRole.System && x.Text == "Never bypass reviews.");
@@ -48,7 +49,7 @@ public sealed class DevelopmentEfficiencyTests
     }
 
     [Fact]
-    public async Task History_beyond_the_old_24k_threshold_is_retained_within_model_capacity()
+    public async Task Coding_history_compacts_before_the_provider_window_is_exhausted()
     {
         var history = new CompactionMessageIndex([], null);
         for (var index = 0; index < 14; index++)
@@ -57,8 +58,8 @@ public sealed class DevelopmentEfficiencyTests
                 new(ChatRole.Tool, [new FunctionResultContent("call-" + index, new string('x', 14_000) + "retained-" + index)])], 0);
         var before = history.IncludedTokenCount;
         Assert.InRange(before, 24_001, 127_999);
-        Assert.False(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
-        Assert.Equal(before, history.IncludedTokenCount);
+        Assert.True(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
+        Assert.True(history.IncludedTokenCount < before);
     }
 
     [Fact]

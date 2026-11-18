@@ -52,12 +52,21 @@ internal sealed class TicketDiscussionTools(Guid boardId, WorkItem item, Guid at
     }
 
     [Description("Read this ticket's discussion and current teammates. Use their exact employee IDs to request clarification.")]
-    private async Task<object> ReadThreadAsync(CancellationToken token) => new
+    private async Task<object> ReadThreadAsync(CancellationToken token)
     {
-        ticket = await context.Platform.Work.ReadItemAsync(new(boardId, item.Id), token),
-        comments = await Discussion.ReadAsync(boardId, item.Id, context, token),
-        team = (await context.Platform.ReadTeamRosterAsync(new TeamRosterRequest(1, 100), token)).Team
-    };
+        var current = await context.Platform.Work.ReadItemAsync(new(boardId, item.Id), token);
+        var team = (await context.Platform.ReadTeamRosterAsync(new TeamRosterRequest(1, 100), token)).Team;
+        return new
+        {
+            ticket = new { current.Id, current.Title, current.Status, current.PlanningRevision, current.StageAssignments, current.AccountableOrganizationUserId },
+            revisedScope = current.PlanningRevision == item.PlanningRevision ? null : new {
+                current.Description, requirements = current.Planning?.Requirements ?? current.Delivery?.Requirements,
+                acceptanceCriteria = current.Planning?.AcceptanceCriteria ?? current.Delivery?.AcceptanceCriteria,
+                constraints = current.Planning?.Constraints ?? current.Delivery?.Constraints },
+            comments = await Discussion.ReadAsync(boardId, item.Id, context, token),
+            team = team?.Members.Select(member => new { member.EmployeeId, member.DisplayName, member.AgentInstallationId, member.CompanyRole, member.TeamRole, member.RelationshipToCaller, member.IsAvailable })
+        };
+    }
 
     [Description("Ask a teammate a specific question on this ticket when work cannot proceed without clarification. Pauses this attempt, preserving work; the producer can resume after their reply. Read the discussion first. Do not guess at unclear review findings.")]
     private async Task<object> RequestResponseAsync(string recipientEmployeeId, string question, CancellationToken token)
