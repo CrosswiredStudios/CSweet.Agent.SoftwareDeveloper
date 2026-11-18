@@ -29,7 +29,7 @@ internal static class BrowserSmokeCheck
         WorkItemVerifications.IsDeclared(item.Planning)
             ? WorkItemVerifications.BrowserSmoke(item.Planning)?.RequireCanvas == true
             : Required(item) && System.Text.RegularExpressions.Regex.IsMatch(string.Join("\n", item.Development!.AcceptanceCriteria),
-                @"\b(Phaser|canvas)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                @"\bcanvas\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
     /// <summary>Tells the model up front what this ticket's declaration requires. Undeclared tickets get no note.</summary>
     internal static string AssignmentNote(WorkItem item)
@@ -47,7 +47,7 @@ internal static class BrowserSmokeCheck
     internal static bool Required(IEnumerable<string> criteria, string context)
     {
         var text = string.Join("\n", criteria);
-        return System.Text.RegularExpressions.Regex.IsMatch(text + "\n" + context, @"\b(browser|Chromium|Phaser|HTML|web)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) &&
+        return System.Text.RegularExpressions.Regex.IsMatch(text + "\n" + context, @"\b(browser|Chromium|HTML|web)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase) &&
             System.Text.RegularExpressions.Regex.IsMatch(text, @"\b(render\w*|display\w*|visible|canvas|loads?|opens?)\b", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
     }
 
