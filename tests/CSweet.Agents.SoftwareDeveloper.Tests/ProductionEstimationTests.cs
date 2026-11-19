@@ -15,7 +15,10 @@ public sealed class ProductionEstimationTests
         var request = Request(role);
         var factory=new EstimateFactory();
         var agent = new SoftwareDeveloperAgent(factory);
-        var runtime=Runtime();var context=runtime.CreateContext();
+        var runtime = Runtime();
+        var context = runtime.CreateContext(installationId: request.Self.AgentInstallationId.ToString(),
+            identity: new AgentIdentity(request.Self.OrganizationUserId.ToString(), request.Self.DisplayName,
+                null, role, null, [], null, null, null));
         await agent.ExecuteCapabilityAsync(new(Guid.NewGuid(),AgentConfigurationCapabilities.Update,JsonSerializer.SerializeToElement(
             new UpdateAgentConfigurationRequest(new Dictionary<string,JsonElement>{{"llmProviderId",JsonSerializer.SerializeToElement(Guid.NewGuid())},{"llmModel",JsonSerializer.SerializeToElement("test")}})),"configure"),context,default);
         var first = await agent.HandleCoordinationTurnAsync(request, context, default);
@@ -32,7 +35,8 @@ public sealed class ProductionEstimationTests
         var estimate = Assert.Single(output.GetProperty("Estimates").EnumerateArray());
         var candidate = request.Transcript[0].Artifact!.Payload.GetProperty("WorkItems")[0];
         Assert.Equal(candidate.GetProperty("WorkItemId").GetGuid(), estimate.GetProperty("WorkItemId").GetGuid());
-        Assert.True(estimate.GetProperty("EstimatePoints").GetDecimal() > 0);
+        Assert.Equal(5, estimate.GetProperty("EstimatePoints").GetDecimal());
+        Assert.Equal(5, output.GetProperty("AvailableSprintCapacity").GetDecimal());
         Assert.NotEmpty(output.GetProperty("Assumptions").EnumerateArray());
         Assert.Equal(artifact.Payload.GetRawText(), replay.Artifact!.Payload.GetRawText());
     }
@@ -82,7 +86,7 @@ public sealed class ProductionEstimationTests
         private sealed class Client:IChatClient
         {
             public Task<ChatResponse> GetResponseAsync(IEnumerable<ChatMessage> messages,ChatOptions? options=null,CancellationToken cancellationToken=default)=>Task.FromResult(new ChatResponse(new ChatMessage(ChatRole.Assistant,
-                "{\"estimates\":[{\"points\":5,\"confidence\":\"medium\",\"rationale\":\"Interaction and verification work\"}],\"availableCapacity\":3,\"assumptions\":[\"Existing commitments limit capacity\"],\"blockers\":[]}")));
+                "{\"estimates\":[{\"points\":5,\"confidence\":\"medium\",\"rationale\":\"Interaction and verification work\"}],\"availableCapacity\":3,\"assumptions\":[\"The proposed integration uses the existing tooling\"],\"blockers\":[]}")));
             public IAsyncEnumerable<ChatResponseUpdate> GetStreamingResponseAsync(IEnumerable<ChatMessage> messages,ChatOptions? options=null,CancellationToken cancellationToken=default)=>throw new NotSupportedException();
             public object? GetService(Type serviceType,object? serviceKey=null)=>null;
             public void Dispose(){}
