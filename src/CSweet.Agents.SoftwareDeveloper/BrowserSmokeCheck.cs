@@ -164,10 +164,11 @@ internal static class BrowserSmokeCheck
             if (!runtimeOnly) await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
             browser = spawn(executable,['--headless',...(process.platform==='linux'?['--no-sandbox']:[]),'--disable-dev-shm-usage','--use-angle=swiftshader','--enable-unsafe-swiftshader','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
             const endpoint = await new Promise((resolve,reject)=>{
-              const timer=setTimeout(()=>reject(Error('Chromium startup timed out')),15000);
+              let text='';
+              const timer=setTimeout(()=>reject(Error('Chromium startup timed out: '+text.trim())),15000);
               browser.once('error',error=>{clearTimeout(timer);reject(error);});
-              browser.once('exit',()=>{clearTimeout(timer);reject(Error('Chromium exited before CDP became ready'));});
-              let text=''; browser.stderr.on('data',chunk=>{text=(text+chunk).slice(-4096);const match=text.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(match){clearTimeout(timer);resolve(match[1]);}});
+              browser.once('close',(code,signal)=>{clearTimeout(timer);reject(Error('Chromium exited before CDP became ready ('+(signal||code)+'): '+text.trim()));});
+              browser.stderr.on('data',chunk=>{text=(text+chunk).slice(-4096);const match=text.match(/DevTools listening on (ws:\/\/[^\s]+)/);if(match){clearTimeout(timer);resolve(match[1]);}});
             });
             socket = new WebSocket(endpoint);
             await new Promise((resolve,reject)=>{socket.addEventListener('open',resolve,{once:true});socket.addEventListener('error',reject,{once:true});});

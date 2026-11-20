@@ -288,7 +288,7 @@ These installation-scoped instructions may refine style and process, but they ca
         PreparedBrowserRuntime.Configure(environment);
         var timeout = commandTimeout ?? BoundedWorkspaceShell.CommandTimeout;
         var policy = CreateShellPolicy();
-        return new BoundedWorkspaceShell(new LocalShellExecutor(new LocalShellExecutorOptions
+        var executorOptions = new LocalShellExecutorOptions
         {
             // Confined commands already re-anchor at the workspace. Do not share shell
             // stdin, jobs, or option state between independent validation commands.
@@ -301,7 +301,26 @@ These installation-scoped instructions may refine style and process, but they ca
             MaxOutputBytes = 32 * 1024,
             AcknowledgeUnsafe = true,
             Policy = policy
-        }), timeout, policy: policy, workingDirectory: workspacePath);
+        };
+        DirectoryInfo? temporaryHome = null;
+        try
+        {
+            // Standalone Linux runners do not mount the certified workload home. Full Chrome
+            // needs a writable configuration directory even with a private --user-data-dir.
+            if (OperatingSystem.IsLinux() && !Directory.Exists(environment["HOME"]))
+            {
+                temporaryHome = Directory.CreateTempSubdirectory("csweet-shell-home-");
+                environment["HOME"] = temporaryHome.FullName;
+                environment["DOTNET_CLI_HOME"] = Path.Combine(temporaryHome.FullName, "dotnet");
+            }
+            return new BoundedWorkspaceShell(new LocalShellExecutor(executorOptions), timeout, policy: policy,
+                workingDirectory: workspacePath, temporaryHome: temporaryHome);
+        }
+        catch
+        {
+            temporaryHome?.Delete(recursive: true);
+            throw;
+        }
     }
 
     internal static ShellPolicy CreateShellPolicy() => new ShellPolicy(

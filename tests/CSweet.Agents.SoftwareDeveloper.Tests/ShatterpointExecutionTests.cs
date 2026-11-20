@@ -89,7 +89,15 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
         if (browserTest)
         {
             // The first build deliberately expects the wrong key. The real browser reports the emitted key.
-            fixture["build.cjs"] = "const fs=require('node:fs'); fs.mkdirSync('dist',{recursive:true}); fs.copyFileSync('index.html','dist/index.html');";
+            fixture["build.cjs"] = """
+                const fs = require('node:fs');
+                fs.mkdirSync('dist', {recursive:true});
+                fs.copyFileSync('index.html', 'dist/index.html');
+                if (process.platform === 'linux') {
+                    fs.mkdirSync('test-results', {recursive:true});
+                    fs.writeFileSync('test-results/assigned-home.txt', require('node:os').homedir());
+                }
+                """;
             fixture["index.html"] = TestPage("Enter");
             command = "pnpm run build";
         }
@@ -165,6 +173,8 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
             {
                 Assert.False(result.Succeeded);
                 Assert.Contains("assigned worker could not launch Chromium", result.Error);
+                Assert.Contains("Chromium exited before CDP became ready", result.Error);
+                Assert.Contains("--headless", result.Error); // Node's actual startup stderr from the intentionally wrong executable.
                 Assert.Equal(0, model.Calls);
                 Assert.Empty(publications);
                 return;
@@ -193,6 +203,17 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
             if (mode == "browser")
             {
                 Assert.True(model.SawEarlyEvidence);
+                if (OperatingSystem.IsLinux())
+                {
+                    var usedHome = await File.ReadAllTextAsync(Path.Combine(root, "test-results", "assigned-home.txt"));
+                    const string workloadHome = "/run/csweet/workload/home";
+                    if (Directory.Exists(workloadHome)) Assert.Equal(workloadHome, usedHome);
+                    else
+                    {
+                        Assert.StartsWith("csweet-shell-home-", Path.GetFileName(usedHome));
+                        Assert.False(Directory.Exists(usedHome), "The assignment left its temporary home behind.");
+                    }
+                }
                 var validations = Assert.Single(publications).Validations!;
                 Assert.Contains(validations, v => v.Command.Contains("browser-scenarios.cjs") && v.Succeeded);
                 Assert.Contains(validations, v => v.Command.Contains("browser-smoke.cjs") && v.Succeeded);

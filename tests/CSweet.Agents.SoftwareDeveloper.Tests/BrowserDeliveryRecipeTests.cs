@@ -9,7 +9,7 @@ public sealed class BrowserDeliveryRecipeTests
     {
         internal static string? Executable => new[] { Environment.GetEnvironmentVariable("CHROMIUM_PATH"),
             Environment.GetEnvironmentVariable("CHROME_BIN"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                "Google", "Chrome", "Application", "chrome.exe"), "/usr/bin/chromium", "/usr/bin/google-chrome" }.FirstOrDefault(File.Exists);
+                "Google", "Chrome", "Application", "chrome.exe"), "/usr/bin/google-chrome", "/usr/bin/chromium" }.FirstOrDefault(File.Exists);
         public ChromiumFactAttribute()
         {
             if (Executable is null) Skip = "Set CHROMIUM_PATH to run the real browser export regression.";
@@ -34,10 +34,24 @@ public sealed class BrowserDeliveryRecipeTests
                 """);
             await File.WriteAllTextAsync(Path.Combine(root.FullName, "test.mjs"), """
                 import assert from 'node:assert/strict';
+                import fs from 'node:fs/promises';
+                import {syncBuiltinESMExports} from 'node:module';
                 import {readBrowserRecord} from './.csweet/browser-record.mjs';
-                const page = new URL('./index.html', import.meta.url).href;
+                if (process.platform === 'win32') {
+                  // Reproduce Chrome's transient sharing violation once before the real startup-file read.
+                  const read = fs.readFile;
+                  fs.readFile = (file, ...args) => {
+                    if (!file.endsWith('DevToolsActivePort')) return read(file, ...args);
+                    fs.readFile = read;
+                    syncBuiltinESMExports();
+                    throw Object.assign(new Error('Chromium is writing the port'), {code: 'EBUSY'});
+                  };
+                  syncBuiltinESMExports();
+                }
+                // Chromium normalizes this URL. The returned page must still be our target.
+                const page = new URL('./index.html', import.meta.url).href.replace('/index.html', '/./index.html');
                 assert.deepEqual(await readBrowserRecord(page, 'record', 15000), {frames: 12});
-                await assert.rejects(readBrowserRecord(page, 'missing', 2000), /Browser record deadline/);
+                await assert.rejects(readBrowserRecord(page, 'missing', 5000), /Browser record deadline while waiting for a JSON record in #missing/);
                 """);
             var start = new ProcessStartInfo("node") { WorkingDirectory = root.FullName, UseShellExecute = false,
                 CreateNoWindow = true, RedirectStandardError = true };

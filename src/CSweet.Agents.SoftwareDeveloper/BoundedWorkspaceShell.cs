@@ -6,7 +6,7 @@ namespace CSweet.Agents.SoftwareDeveloper;
 // The framework timeout includes process shutdown and pipe draining, which can itself
 // hang. Bound that entire await independently, and never reuse an uncertain executor.
 internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeout, TimeSpan? cleanupGrace = null,
-    ShellPolicy? policy = null, string? workingDirectory = null) : ShellExecutor
+    ShellPolicy? policy = null, string? workingDirectory = null, DirectoryInfo? temporaryHome = null) : ShellExecutor
 {
     internal static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(5);
     private readonly TimeSpan _cleanupGrace = cleanupGrace ?? TimeSpan.FromSeconds(10);
@@ -114,7 +114,10 @@ internal sealed class BoundedWorkspaceShell(ShellExecutor inner, TimeSpan timeou
             // Preserve a pending handoff/typed timeout. Otherwise an unconfirmed disposal
             // must stop runtime reuse instead of converting cleanup failure into success.
             if (Failure is null && ResourceHandoff is null) throw Stop(true);
+            return;
         }
+        if (temporaryHome is not null && Failure is not WorkspaceCommandTerminationException && Directory.Exists(temporaryHome.FullName))
+            temporaryHome.Delete(recursive: true);
     }
 }
 

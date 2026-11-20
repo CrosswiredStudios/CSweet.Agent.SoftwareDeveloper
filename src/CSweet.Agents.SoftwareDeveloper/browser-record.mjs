@@ -14,29 +14,35 @@ export async function readBrowserRecord(pageUrl, elementId, timeoutMs = 45000) {
   const { signal } = controller;
   let phase = 'launching Chromium';
   const deadline = setTimeout(() => controller.abort(new Error('Browser record deadline while ' + phase)), timeoutMs);
-  const browser = spawn(executable, ['--headless', '--remote-debugging-port=0',
+  const browser = spawn(executable, ['--headless', '--no-first-run', '--remote-debugging-port=0',
     '--disable-dev-shm-usage', '--disable-background-timer-throttling',
     ...(process.platform === 'linux' && process.getuid?.() === 0 ? ['--no-sandbox'] : []),
-    '--user-data-dir=' + profile, pageUrl], { stdio: 'ignore', windowsHide: true });
+    '--user-data-dir=' + profile, 'about:blank'], { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true });
   const closed = new Promise(resolve => browser.once('close', resolve));
   browser.once('error', error => controller.abort(error));
-  browser.once('exit', code => controller.abort(new Error('Chromium exited (' + code + ') while ' + phase)));
+  let stderr = '';
+  browser.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-2000); });
+  browser.once('close', (code, reason) => controller.abort(new Error(
+    'Chromium exited (' + (reason || code) + ') while ' + phase + ': ' + stderr.trim())));
   let socket;
   try {
     let port;
     while (!port) {
       signal.throwIfAborted();
       try { port = Number((await readFile(join(profile, 'DevToolsActivePort'), 'utf8')).split('\n')[0]); }
-      catch (error) { if (error.code !== 'ENOENT') throw error; }
+      catch (error) {
+        // Chrome for Windows briefly holds an exclusive handle while publishing the port.
+        const sharingViolation = process.platform === 'win32' && ['EBUSY', 'EPERM', 'EACCES'].includes(error.code);
+        if (error.code !== 'ENOENT' && !sharingViolation) throw error;
+      }
       if (!port) await delay(75, undefined, { signal });
     }
     phase = 'connecting to the scenario page';
-    let page;
-    while (!page) {
-      const response = await fetch('http://127.0.0.1:' + port + '/json/list', { signal });
-      page = (await response.json()).find(target => target.type === 'page' && target.url === pageUrl);
-      if (!page) await delay(75, undefined, { signal });
-    }
+    // Attach to the target we created. Its displayed URL can change during navigation.
+    const response = await fetch('http://127.0.0.1:' + port + '/json/new?' + encodeURIComponent(pageUrl),
+      { method: 'PUT', signal });
+    if (!response.ok) throw new Error('Chromium could not create the scenario page (HTTP ' + response.status + ').');
+    const page = await response.json();
     socket = new WebSocket(page.webSocketDebuggerUrl);
     await once(socket, 'open', { signal });
     socket.addEventListener('close', () => controller.abort(new Error('Chromium closed while ' + phase)), { once: true });
