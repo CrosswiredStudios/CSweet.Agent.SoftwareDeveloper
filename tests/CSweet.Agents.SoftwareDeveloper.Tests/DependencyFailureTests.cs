@@ -9,6 +9,7 @@ public sealed class DependencyFailureTests
     [InlineData(1, "internet_permission_denied", "internet-permission-denied")]
     [InlineData(1, "network_destination_denied", "destination-policy-denied")]
     [InlineData(1, "npm ERR! code ETARGET", "package-unavailable")]
+    [InlineData(1, "ERR_PNPM_NO_MATCHING_VERSION No matching version found for pixi-filters@^8", "package-unavailable")]
     [InlineData(1, "Expected score to increase", "application-validation-failed")]
     public void InfrastructureFailuresRemainDistinctFromApplicationDefects(int exitCode, string diagnostic, string kind)
     {

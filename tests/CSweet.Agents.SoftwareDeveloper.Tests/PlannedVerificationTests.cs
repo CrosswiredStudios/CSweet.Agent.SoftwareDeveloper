@@ -52,6 +52,30 @@ public sealed class PlannedVerificationTests
         finally { Directory.Delete(root, true); }
     }
 
+    [Fact]
+    public async Task Focused_check_uses_project_manager_and_reports_missing_tool_without_running_an_aggregate()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "csweet-focused-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "package.json"),
+                """{"packageManager":"pnpm@10.0.0","scripts":{"typecheck":"tsc --noEmit","verify":"node slow.mjs","test":"node suite.mjs"}}""");
+            var events = new List<string>();
+            await using var shell = new BoundedWorkspaceShell(new Executor(events, true, "tsc: command not found"), TimeSpan.FromMinutes(1));
+            var progress = new WorkspaceProgress(Guid.NewGuid(), (_, _) => Task.CompletedTask, NullLogger.Instance, workspacePath: root);
+            var result = await PlannedVerification.RunAsync(Plan("npm run test; pnpm run verify; pnpm run test --changed; pnpm run typecheck."),
+                root, progress, shell, _ => { events.Add("saved"); return Task.CompletedTask; }, default, focused: true);
+            Assert.Equal(new[] { "pnpm run typecheck", "saved" }, events);
+            Assert.Contains("tsc: command not found", result);
+            Assert.False(Assert.Single(progress.Validations.Summary(root).Validations).Succeeded);
+            // A narrowed test command cannot silently turn into the entire test suite.
+            Assert.Null(await PlannedVerification.RunAsync(Plan("pnpm run test --changed"), root, progress, shell,
+                _ => throw new InvalidOperationException(), default));
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     private static ExecutionPlan Plan(string verification) => new([
         new("Accepted source change", verification), new("Required runtime check", verification), new("Publish evidence", "Review actual results")],
         0, "Run the existing check", "source", null);
@@ -80,12 +104,12 @@ public sealed class PlannedVerificationTests
         finally { Directory.Delete(root, true); }
     }
 
-    private sealed class Executor(List<string> events, bool failFirst) : ShellExecutor
+    private sealed class Executor(List<string> events, bool failFirst, string error = "assertion failed") : ShellExecutor
     {
         public override Task<ShellResult> RunAsync(string command, CancellationToken cancellationToken = default)
         {
             events.Add(command);
-            return Task.FromResult(new ShellResult("executed", failFirst ? "assertion failed" : "", failFirst ? 1 : 0, TimeSpan.Zero, false));
+            return Task.FromResult(new ShellResult("executed", failFirst ? error : "", failFirst ? 1 : 0, TimeSpan.Zero, false));
         }
         public override AIFunction AsAIFunction(string name = "run_shell", string? description = null, bool requireApproval = true) => throw new NotSupportedException();
         public override ValueTask DisposeAsync() => ValueTask.CompletedTask;

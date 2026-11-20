@@ -200,7 +200,7 @@ public sealed class DevelopmentWorkflowTests
         var checks = 0;
         var workflow = new DevelopmentWorkflow(workspace.Root)
         {
-            VerifyPlannedSteps = (_, _) => { checks++; return Task.FromResult<string?>("Existing verification executed: exit 0"); }
+            VerifyPlannedSteps = (_, _, _) => { checks++; return Task.FromResult<string?>("Existing verification executed: exit 0"); }
         };
         using var client = new ScriptClient(script.ToArray());
         await RunAsync(workspace.Root, workflow, client);
@@ -216,7 +216,7 @@ public sealed class DevelopmentWorkflowTests
         var workflow = new DevelopmentWorkflow(workspace.Root,
             new ExecutionPlan(Steps, 0, "Repair existing check", "retained", null))
         {
-            VerifyPlannedSteps = (_, _) => Task.FromResult<string?>("npm run verify:playfield: executed failure, missing entry point")
+            VerifyPlannedSteps = (_, _, _) => Task.FromResult<string?>("npm run verify:playfield: executed failure, missing entry point")
         };
         using var client = new ScriptClient([Write(".csweet/outcome.json", "{}")]);
         await RunAsync(workspace.Root, workflow, client);

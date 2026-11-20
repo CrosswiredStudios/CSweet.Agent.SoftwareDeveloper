@@ -8,15 +8,22 @@ internal sealed record PreparedBrowserRuntime(string CachePath, string Executabl
 
     internal static void Configure(IDictionary<string, string?> environment)
     {
-        if (Prepared.Value is not { } browser) return;
-        environment["PLAYWRIGHT_BROWSERS_PATH"] = browser.CachePath;
-        environment["CHROMIUM_PATH"] = browser.Executable;
-        environment["CHROME_BIN"] = browser.Executable;
+        if (SelectedExecutable() is not { } path) return;
+        environment["CHROMIUM_PATH"] = environment["CHROME_BIN"] = path;
+        if (Prepared.Value is { } image) environment["PLAYWRIGHT_BROWSERS_PATH"] = image.CachePath;
     }
 
-    internal static string Guidance => Prepared.Value is { } browser
-        ? $"The certified image already provides Chromium at {browser.Executable}. The shell exports CHROMIUM_PATH, CHROME_BIN and PLAYWRIGHT_BROWSERS_PATH. Use that executable/cache for the required browser check before considering an install. Do not add Playwright to project dependencies just to rediscover this browser."
-        : "No prepared Chromium was found in the certified image cache. Check approved workload tools once; if unavailable after one permitted setup attempt, retain the exact infrastructure gap. Never claim a skipped browser check passed.";
+    private static string? SelectedExecutable()
+    {
+        foreach (var key in new[] { "CHROMIUM_PATH", "CHROME_BIN" })
+            if (Environment.GetEnvironmentVariable(key) is { } path && Path.IsPathFullyQualified(path) && File.Exists(path))
+                return path;
+        return Prepared.Value?.Executable;
+    }
+
+    internal static string Guidance => SelectedExecutable() is { } executable
+        ? $"The assigned worker provides Chromium at {executable}. Use the executable exported in CHROMIUM_PATH and CHROME_BIN for browser checks."
+        : "Check the assigned worker browser probe or the explicit CHROMIUM_PATH/CHROME_BIN before assuming Chromium is missing. Check approved workload tools once; if unavailable after one permitted setup attempt, retain the exact infrastructure gap. Never claim a skipped browser check passed.";
 
     internal static PreparedBrowserRuntime? Discover(string imageRoot)
     {

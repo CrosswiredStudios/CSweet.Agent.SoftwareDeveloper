@@ -5,7 +5,7 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 
 public sealed class BrowserDeliveryRecipeTests
 {
-    private sealed class ChromiumFactAttribute : FactAttribute
+    internal sealed class ChromiumFactAttribute : FactAttribute
     {
         internal static string? Executable => new[] { Environment.GetEnvironmentVariable("CHROMIUM_PATH"),
             Environment.GetEnvironmentVariable("CHROME_BIN"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),

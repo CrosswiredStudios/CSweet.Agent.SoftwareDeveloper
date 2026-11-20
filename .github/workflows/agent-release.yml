@@ -74,6 +74,8 @@ jobs:
           $projectVersion = [string]($project.Project.PropertyGroup | Where-Object Version | Select-Object -First 1).Version
           if ($projectVersion -ne $version) { throw "csproj version $projectVersion does not match manifest version $version." }
           if (-not (Test-Path "releases/$version.md")) { throw "Missing releases/$version.md for version $version." }
+      - name: Install pnpm for developer execution tests
+        run: npm install --global pnpm@10.19.0
       - run: dotnet test CSweet.Agents.SoftwareDeveloper.slnx -c Release
       - name: Publish linux-x64 agent
         run: dotnet publish src/CSweet.Agents.SoftwareDeveloper/CSweet.Agents.SoftwareDeveloper.csproj -c Release --framework net10.0 --runtime linux-x64 --self-contained false -o publish/linux-x64

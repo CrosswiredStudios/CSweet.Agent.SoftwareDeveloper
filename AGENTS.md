@@ -6,7 +6,7 @@ This repository contains one standalone C-Sweet protocol-v2 agent. Its purpose i
 
 ## Invariants
 
-- Keep `com.csweet.software-developer` and version `2.4.4` synchronized between agent code,
+- Keep `com.csweet.software-developer` and version `2.4.6` synchronized between agent code,
   `csweet-plugin.json`, tests, and releases.
 - The root manifest is the reviewed authority request. Keep `provides`, `requires`, events,
   configuration, credentials, web access, and UI contributions synchronized with implementation
@@ -41,6 +41,8 @@ Mirror core fixes and their regression tests in both agents; retain distinct rol
 When working in the sibling C-Sweet checkout, also run
 `../csweet/scripts/Test-DeveloperAgentCoreParity.ps1`. This contributor check requires both
 agent checkouts; it does not add sibling dependencies to standalone builds.
+
+The execution regressions run Node.js, pnpm 10 and Python 3 against isolated local fixtures. Install those tools on the test runner and expose them on PATH.
 
 Run from the repository root:
 

@@ -57,6 +57,17 @@ internal static class BrowserSmokeCheck
         await File.WriteAllTextAsync(Path.Combine(root, ".csweet", "browser-smoke.cjs"), Script, new System.Text.UTF8Encoding(false), token);
     }
 
+    internal static async Task<string> ProbeRuntimeAsync(string root, BoundedWorkspaceShell shell, CancellationToken token)
+    {
+        await PrepareAsync(root, token);
+        const string command = "node .csweet/browser-smoke.cjs --probe-runtime";
+        var result = await shell.RunAsync(command, token);
+        if (result.ExitCode != 0 || result.TimedOut)
+            throw new DevelopmentInfrastructureException("The assigned worker could not launch Chromium. Environment owner: repair the certified browser and Node runtime, then retry. " +
+                command + ": " + DevelopmentDiagnostics.SanitizeBlocker(result.FormatForModel()));
+        return result.Stdout.Trim();
+    }
+
     internal static string Command(string directory, bool requireCanvas)
     {
         // Keep tool-selected paths out of shell syntax and inside the assignment.
@@ -128,12 +139,13 @@ internal static class BrowserSmokeCheck
         const {createHash} = require('node:crypto');
         async function main() {
           const workspace = await fs.realpath(process.cwd());
-          const root = await fs.realpath(path.resolve(process.argv[2] || 'dist'));
+          const runtimeOnly = process.argv[2] === '--probe-runtime';
+          const root = runtimeOnly ? path.join(workspace, '.csweet') : await fs.realpath(path.resolve(process.argv[2] || 'dist'));
           if (!root.startsWith(workspace + path.sep)) throw Error('Build must be inside this workspace');
           const executable = process.env.CHROMIUM_PATH || process.env.CHROME_BIN;
           if (!executable) throw Error('Prepared Chromium unavailable; report an infrastructure blocker, not a skipped pass');
           const output = path.join(workspace, 'test-results/browser-smoke');
-          await fs.mkdir(output, {recursive:true});
+          if (!runtimeOnly) await fs.mkdir(output, {recursive:true});
           const profile = await fs.mkdtemp(path.join(os.tmpdir(), 'csweet-browser-smoke-'));
           const errors = []; const pending = new Map(); let sequence = 0; let socket; let browser;
           const recordError = value => {if(errors.length<20) errors.push(String(value).slice(0,2000));};
@@ -149,7 +161,7 @@ internal static class BrowserSmokeCheck
             } catch {res.writeHead(404);res.end();}
           });
           try {
-            await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
+            if (!runtimeOnly) await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(0,'127.0.0.1',resolve);});
             browser = spawn(executable,['--headless',...(process.platform==='linux'?['--no-sandbox']:[]),'--disable-dev-shm-usage','--use-angle=swiftshader','--enable-unsafe-swiftshader','--remote-debugging-port=0','--user-data-dir='+profile,'about:blank'],{stdio:['ignore','ignore','pipe'],windowsHide:true});
             const endpoint = await new Promise((resolve,reject)=>{
               const timer=setTimeout(()=>reject(Error('Chromium startup timed out')),15000);
@@ -170,6 +182,7 @@ internal static class BrowserSmokeCheck
               const id=++sequence; const timer=setTimeout(()=>{pending.delete(id);reject(Error('Browser command timed out: '+method));},15000);
               pending.set(id,{resolve,reject,timer});socket.send(JSON.stringify({id,method,params,...(sessionId?{sessionId}:{})}));
             });
+            if (runtimeOnly) { console.log('Assigned Chromium ready: '+(await send('Browser.getVersion')).product); return; }
             const {targetId}=await send('Target.createTarget',{url:'about:blank'});
             const {sessionId}=await send('Target.attachToTarget',{targetId,flatten:true});
             for(const method of ['Runtime.enable','Page.enable','Network.enable']) await send(method,{},sessionId);
@@ -195,7 +208,7 @@ internal static class BrowserSmokeCheck
             console.log(JSON.stringify(report));process.exitCode=passed?0:1;
           } finally {
             for(const wait of pending.values()){clearTimeout(wait.timer);wait.reject(Error('Browser check closed'));}
-            socket?.close(); browser?.kill(); await new Promise(resolve=>server.close(resolve));
+            socket?.close(); browser?.kill(); if (server.listening) await new Promise(resolve=>server.close(resolve));
             if(browser&&browser.exitCode===null) await Promise.race([new Promise(resolve=>browser.once('exit',resolve)),new Promise(resolve=>setTimeout(resolve,3000))]);
             await fs.rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:100});
           }

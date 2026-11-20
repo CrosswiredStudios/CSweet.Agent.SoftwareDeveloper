@@ -225,7 +225,7 @@ Development is blocked: {headline}
             return "internet-permission-denied";
         if (dns) return "network-dns-failed";
         if (transport) return "network-transport-failed";
-        if (new[] { "E404", "ETARGET", "No matching distribution found", "NU1101" }
+        if (new[] { "E404", "ETARGET", "ERR_PNPM_NO_MATCHING_VERSION", "No matching distribution found", "NU1101", "NU1102" }
             .Any(x => detail.Contains(x, StringComparison.OrdinalIgnoreCase))) return "package-unavailable";
         return "application-validation-failed";
     }

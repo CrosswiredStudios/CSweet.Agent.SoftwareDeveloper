@@ -10,7 +10,7 @@ using Microsoft.Extensions.AI;
 namespace CSweet.Agents.SoftwareDeveloper;
 
 /// <summary>A short durable plan and evidence-based checkpoints, independent of model latency.</summary>
-internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained = null,
+internal sealed partial class DevelopmentWorkflow(string root, ExecutionPlan? retained = null,
     Func<ExecutionPlan, CancellationToken, Task>? persist = null)
 {
     internal const string Instructions = """
@@ -22,7 +22,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         The controller reviews progress automatically after eight workspace operations; do not stop useful work
         to satisfy an operation counter. Use review_execution_progress when the current step or next action changes.
         New relevant source inspection is useful progress too. Slow inference is never a stall.
-        After sustained inspection, the controller may run existing verification scripts named in your plan.
+        After a source edit the controller can run the first focused project check in your plan. It also checks after sustained inspection.
         Use their executed result to make the minimal repair or finish; do not keep polishing an untested helper.
         Do not add checks or rewrite passing helpers without a concrete defect or unmet accepted requirement.
         Probe required infrastructure once and make at most one approved setup attempt. If it remains unavailable,
@@ -31,10 +31,11 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         Never convert missing Chromium or another required runtime into a successful skipped test.
         """;
 
-    internal ExecutionPlan? Plan { get; private set; } = retained;
+    internal ExecutionPlan? Plan { get; private set; } = retained?.AwaitingPlan == true ? null : retained;
     internal Exception? Failure { get; private set; }
     internal Action? Stop { get; set; }
-    internal Func<ExecutionPlan, CancellationToken, Task<string?>>? VerifyPlannedSteps { get; set; }
+    internal Func<ExecutionPlan, bool, CancellationToken, Task<string?>>? VerifyPlannedSteps { get; set; }
+    internal Func<string, CancellationToken, Task<string?>>? FirstBrowserCheck { get; set; }
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HashSet<string> _commands = new(StringComparer.Ordinal);
     private readonly HashSet<string> _observedCommands = new(StringComparer.Ordinal);
@@ -43,6 +44,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     private int _operations, _stalledReviews, _newEvidence, _newContext;
     private string? _lastReview;
     private int _reviewWindows;
+    private bool _checkedAfterEdit, _builtProject;
     private string _source = WorkspaceValidation.SourceFingerprint(root);
 
     internal static async Task<DevelopmentWorkflow> LoadAsync(string root, string key, Guid source,
@@ -52,8 +54,9 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         var stored = await context.Platform.ReadOperatingStateAsync<ExecutionPlan>(key, token);
         if (stored is not null && (stored.StateKey != key || stored.SchemaId != schema || stored.SchemaVersion != 1))
             throw new OperationalDevelopmentException("The retained execution plan has an incompatible identity or schema.");
-        if (stored is not null && (stored.Payload is null || !ValidSteps(stored.Payload.Steps) || stored.Payload.CurrentStep < 0 ||
-            stored.Payload.CurrentStep >= stored.Payload.Steps.Length))
+        if (stored is not null && (stored.Payload is not { } saved || (saved.AwaitingPlan
+            ? saved.Budget is null || saved.Steps is not { Length: 0 } || saved.CurrentStep != 0
+            : !ValidSteps(saved.Steps) || saved.CurrentStep < 0 || saved.CurrentStep >= saved.Steps.Length)))
             throw new OperationalDevelopmentException("The retained execution plan is malformed; current ticket scope remains authoritative.");
         return new(root, stored?.Payload, async (plan, ct) =>
         {
@@ -64,7 +67,8 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
             try
             {
                 await context.ReportProgressAsync(new { itemId = source, kind = "execution-checkpoint", step = plan.CurrentStep,
-                    steps = plan.Steps.Length, nextAction = plan.NextAction, resource = plan.Blocker?.Resource,
+                    steps = plan.Steps.Length, turns = plan.Budget?.Turns, totalTurns = plan.Budget?.TotalTurns, toolCalls = plan.Budget?.ToolCalls,
+                    peakToolIteration = plan.Budget?.PeakToolIteration, inputTokens = plan.Budget?.ReportedInputTokens, outputTokens = plan.Budget?.ReportedOutputTokens, nextAction = plan.NextAction, resource = plan.Blocker?.Resource,
                     recoveryAction = plan.Blocker?.RecoveryAction }, ct);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
@@ -112,6 +116,8 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         try
         {
             if (Failure is { } failure) throw failure;
+            Budget = Budget with { ToolCalls = Budget.ToolCalls + 1,
+                PeakToolIteration = Math.Max(Budget.PeakToolIteration, invocation.Iteration + 1) };
             var name = invocation.Function.Name;
             var workspace = name.StartsWith("file_access_", StringComparison.Ordinal) || name is "execute_workspace_command" or "execute_workspace_commands";
             var inspection = name is "file_access_read" or "file_access_ls" or "file_access_grep";
@@ -127,13 +133,32 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
                 _operations++;
                 if (inspection && _inspections.Add(name + ":" + JsonSerializer.Serialize(invocation.Arguments))) _newContext++;
                 if (name is "file_access_write" or "file_access_replace" or "file_access_replace_lines" or "file_access_delete" &&
-                    invocation.Arguments.TryGetValue("fileName", out var path) && path is string file)
+                    invocation.Arguments.TryGetValue("fileName", out var path) && path?.ToString() is { Length: > 0 } file)
+                {
                     _edits[file] = _edits.GetValueOrDefault(file) + 1;
+                    if (!_checkedAfterEdit && Plan is not null && VerifyPlannedSteps is { } verify &&
+                        !file.Replace('\\', '/').StartsWith(".csweet/", StringComparison.Ordinal) &&
+                        Path.GetFileName(file) != "package.json" &&
+                        await verify(Plan, true, token) is { } diagnostic)
+                    {
+                        _checkedAfterEdit = true;
+                        result = AppendNote(result, diagnostic);
+                    }
+                }
                 if (Plan is not null && _operations >= 8)
                 {
                     var note = await EvaluateProgressAsync(token);
-                    result = result is string text ? text + "\n\n[Execution progress] " + note : new { result, executionProgress = note };
+                    result = AppendNote(result, note);
+                    _checkedAfterEdit = false;
                 }
+            }
+            if (FirstBrowserCheck is { } firstBrowser && (_builtProject || name == "check_browser_build"))
+            {
+                var directory = name == "check_browser_build" && invocation.Arguments.TryGetValue("buildDirectory", out var arg)
+                    ? arg?.ToString() : null;
+                if ((directory != null || _builtProject) && await firstBrowser(directory ?? "", token) is { } browserResult)
+                    result = AppendNote(result, browserResult);
+                _builtProject = false;
             }
             if (Failure is { } pending) throw pending;
             return result;
@@ -141,12 +166,15 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
         finally { _gate.Release(); }
     }
 
+    private static object AppendNote(object? result, string note) =>
+        result is string text ? text + "\n\n[Execution progress] " + note : new { result, executionProgress = note };
+
     [Description("Record three to five short acceptance-linked steps before editing. Each step specifies its verification. Existing plans are reused, not regenerated.")]
     internal async Task<string> RecordPlanAsync(ExecutionStep[] steps, CancellationToken token)
     {
         if (Plan is not null) return ResumeContext;
         if (!ValidSteps(steps))
-            return "Supply three to five steps, each with a requirement and verification of 1–400 characters.";
+            return "Supply three to five steps, each with a requirement and verification of 1â€“400 characters.";
         Plan = new(steps, 0, "Inspect required infrastructure and retained source", _source, null);
         _operations = 0; _stalledReviews = 0; _newEvidence = 0; _newContext = 0;
         await SaveAsync(token);
@@ -157,7 +185,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     internal async Task<string> ReviewAsync(int step, string nextAction, CancellationToken token)
     {
         if (Plan is null) return "Record the short execution plan first.";
-        if (step < 0 || step >= Plan.Steps.Length || !Valid(nextAction, 600)) return "Supply a valid step and a concrete next action of 1–600 characters.";
+        if (step < 0 || step >= Plan.Steps.Length || !Valid(nextAction, 600)) return "Supply a valid step and a concrete next action of 1â€“600 characters.";
         Plan = Plan with { CurrentStep = step, NextAction = nextAction.Trim() };
         await SaveAsync(token);
         return "Next action retained. Automatic progress checks do not require another review-tool call or treat todo status as executed evidence.";
@@ -167,7 +195,7 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     {
         string? verification = null;
         if (++_reviewWindows % 2 == 0 && VerifyPlannedSteps is not null)
-            verification = await VerifyPlannedSteps(Plan!, token);
+            verification = await VerifyPlannedSteps(Plan!, false, token);
         var current = WorkspaceValidation.SourceFingerprint(root);
         var churn = _edits.Values.Any(n => n >= 4) && _newEvidence == 0;
         var progressed = current != _source || _newEvidence > 0 || _newContext > 0;
@@ -187,6 +215,10 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
     internal async Task ObserveCommandAsync(string command, ShellResult result, CancellationToken token)
     {
         _observedCommands.Add(command);
+        if (result.ExitCode == 0 && command.Trim() is "npm run build" or "pnpm run build" or "yarn build" or "yarn run build" or "bun run build")
+            _builtProject = true;
+        if (Plan is { } plan && PlannedVerification.NamesProjectCheck(plan, command))
+            ObserveCheck(command, result.ExitCode == 0 && !result.TimedOut, CheckDiagnostic(result));
         // Routine inspections and downloads are not acceptance evidence. A new failed check is useful diagnostic progress.
         if (WorkspaceValidation.IsStandalone(command) && !command.TrimStart().StartsWith("grep ", StringComparison.Ordinal) &&
             !command.TrimStart().StartsWith("rg ", StringComparison.Ordinal) && !command.TrimStart().StartsWith("find ", StringComparison.Ordinal))
@@ -218,9 +250,13 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
 
     private async Task SaveAsync(CancellationToken token)
     {
-        if (persist is not null && Plan is not null)
+        if (persist is not null)
         {
-            try { await persist(Plan, token); }
+            // Reserve turns before inference even when the model has yet to supply a plan.
+            var state = Plan is null ? new ExecutionPlan([], 0, "Record an execution plan", _source, null)
+                { AwaitingPlan = true, Budget = Budget } : Plan with { Budget = Budget };
+            if (Plan is not null) Plan = state;
+            try { await persist(state, token); }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
             catch (Exception error) { throw Fail(new WorkspaceCheckpointException(error)); }
         }
@@ -234,6 +270,10 @@ internal sealed class DevelopmentWorkflow(string root, ExecutionPlan? retained =
 
 internal sealed record ExecutionStep(string Requirement, string Verification);
 internal sealed record ExecutionInfrastructureBlocker(string Resource, string Command, string RecoveryAction);
-internal sealed record ExecutionPlan(ExecutionStep[] Steps, int CurrentStep, string NextAction, string SourceFingerprint, ExecutionInfrastructureBlocker? Blocker);
+internal sealed record ExecutionPlan(ExecutionStep[] Steps, int CurrentStep, string NextAction, string SourceFingerprint, ExecutionInfrastructureBlocker? Blocker)
+{
+    public ExecutionBudget? Budget { get; init; }
+    public bool AwaitingPlan { get; init; }
+}
 internal sealed class DevelopmentProgressException() : Exception("development.progress: Repeated operations produced no useful progress. Source and the short plan are retained; resume with a fresh focused session.");
-internal sealed class DevelopmentInfrastructureException() : Exception("development.infrastructure: Required infrastructure is unavailable. Source and the short plan are retained; recover the recorded resource and resume unfinished work. Unexecuted checks have not passed.");
+internal sealed class DevelopmentInfrastructureException(string? detail = null) : Exception(detail ?? "development.infrastructure: Required infrastructure is unavailable. Source and the short plan are retained; recover the recorded resource and resume unfinished work. Unexecuted checks have not passed.");

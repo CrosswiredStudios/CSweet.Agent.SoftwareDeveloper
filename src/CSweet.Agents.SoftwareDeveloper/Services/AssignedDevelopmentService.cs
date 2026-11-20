@@ -80,6 +80,12 @@ internal sealed partial class AssignedDevelopmentService(
             return AgentWorkResult.Failure("The platform connection was interrupted. Retained source can resume on retry.",
                 "runtime.transport", retryable: true);
         }
+        catch (DevelopmentBudgetException exhausted)
+        {
+            return AgentWorkResult.Success(new WorkExecutionOutcomeV1(assignment.StageExecutionId, assignment.AttemptId,
+                WorkExecutionDispositions.Blocked, "blocked", exhausted.Message,
+                JsonSerializer.SerializeToElement(exhausted.Budget), [], ["development.turn_budget"]));
+        }
         catch (TicketResponseRequiredException discussion)
         {
             return AgentWorkResult.Success(new WorkExecutionOutcomeV1(
@@ -197,13 +203,16 @@ internal sealed partial class AssignedDevelopmentService(
         // Read deterministic project/profile inputs before spending a model turn or
         // restoring dependencies into a VM that already needs replacement.
         await sizing.BeforeCommandAsync("build", cancellationToken);
+        var browserRuntime = BrowserSmokeCheck.Required(item) || BrowserScenarioCheck.Required(item)
+            ? await BrowserSmokeCheck.ProbeRuntimeAsync(workspacePath, shell, cancellationToken) : null;
         using var chatClient = await _chatClients.CreateAsync(context, cancellationToken);
         var workflow = await DevelopmentWorkflow.LoadAsync(workspacePath,
             $"development/execution/{workspace.WorkspaceId:N}/{assignmentRevision}/{item.PlanningRevision}", item.Id, context, cancellationToken);
+        workflow.BindAttempt(operationId);
         shell.AfterCommand = workflow.ObserveCommandAsync;
-        workflow.VerifyPlannedSteps = (plan, token) => PlannedVerification.RunAsync(plan, workspacePath, progress, shell,
+        workflow.VerifyPlannedSteps = (plan, focused, token) => PlannedVerification.RunAsync(plan, workspacePath, progress, shell,
             ct => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, ct,
-                resumeSummary: progress.Validations.Summary(workspacePath)), token);
+                resumeSummary: progress.Validations.Summary(workspacePath)), token, focused);
         var harnessOptions = SoftwareDeveloperHarness.CreateOptions(
                 context.Identity?.DisplayName ?? SoftwareDeveloperProfile.DisplayName,
                 workspacePath,
@@ -223,8 +232,9 @@ internal sealed partial class AssignedDevelopmentService(
         harnessOptions.ChatOptions.Tools.Add(browser.Tool());
         var scenarios = new BrowserScenarioCheck.Session(workspacePath, progress, shell,
             token => context.Platform.Git.UploadCheckpointAsync(workspace, assignmentRevision, token,
-                resumeSummary: progress.Validations.Summary(workspacePath)), BrowserSmokeCheck.Required(item) ? browser : null);
+                resumeSummary: progress.Validations.Summary(workspacePath)), BrowserSmokeCheck.Required(item) ? browser : null, workflow);
         harnessOptions.ChatOptions.Tools.Add(scenarios.Tool());
+        if (BrowserScenarioCheck.Required(item)) workflow.FirstBrowserCheck = scenarios.TryFirstBuildAsync;
         AIAgent harness = progress.Attach(chatClient.AsHarnessAgent(workflow.Configure(discussion.Attach(
             await CalendarHarness.ConfigureAsync(context, harnessOptions, cancellationToken)))));
         harness = discussion.AttachPauseGuard(harness);
@@ -244,7 +254,7 @@ internal sealed partial class AssignedDevelopmentService(
                     technicalGuidance, dependencyPlans, reviewFeedback, managerDirections, discussion.CurrentThread) +
                 "\nRetained execution summary (context only; revalidate current source before publication): " + JsonSerializer.Serialize(workspace.ResumeSummary) +
                 "\nCurrent trusted resource policy: " + JsonSerializer.Serialize(context.Resources) + ". Use request_workload_memory before a heavy command when evidence indicates a larger VM is needed.\n" +
-                "\n" + BrowserDeliveryRecipe.GuidanceReference +
+                "\n" + browserRuntime + "\n" + BrowserDeliveryRecipe.GuidanceReference +
                 "\n" + BrowserSmokeCheck.AssignmentNote(item) +
                 "\n" + BrowserScenarioCheck.AssignmentNote(item),
                 workspacePath,

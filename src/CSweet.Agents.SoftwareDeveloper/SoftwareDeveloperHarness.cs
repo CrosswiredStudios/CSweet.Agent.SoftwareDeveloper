@@ -15,7 +15,7 @@ internal static class SoftwareDeveloperHarness
         Func<CancellationToken, Task>? checkpoint = null, Func<bool>? shouldPause = null,
         BoundedWorkspaceShell? shell = null, DevelopmentWorkflow? workflow = null, bool verifyOnEntry = true)
     {
-        const int maximumTurns = 6;
+        var maximumTurns = workflow is null ? DevelopmentWorkflow.BaseTurns : DevelopmentWorkflow.MaximumTurns;
         if (checkpoint is { } save) checkpoint = token => WorkspaceCheckpoint.SaveAsync(save, token);
         using var checkpointCancellation = new ImplementationCancellation(cancellationToken);
         if (workflow is not null)
@@ -34,15 +34,22 @@ internal static class SoftwareDeveloperHarness
         var contextRecovered = false;
         for (var turn = 0; turn < maximumTurns; turn++)
         {
+            if (workflow is not null)
+            {
+                await workflow.BeginTurnAsync(cancellationToken);
+                if (workflow.Budget.Extended)
+                    prompt += "\nVerified progress earned a bounded continuation. Finish the remaining criterion and report the executed result.";
+            }
             AgentResponse response;
             try
             {
                 try
                 {
                     if (turn == 0 && verifyOnEntry && workflow?.Plan is { } retained && workflow.VerifyPlannedSteps is { } verify &&
-                        await verify(retained, checkpointCancellation.Token) is { } results)
+                        await verify(retained, false, checkpointCancellation.Token) is { } results)
                         prompt += "\nExisting retained verification executed before further inspection:\n" + results;
                     response = await harness.RunAsync(prompt, activeSession, options: null, checkpointCancellation.Token);
+                    if (workflow is not null) await workflow.FinishTurnAsync(response, cancellationToken);
                     if (workflow?.Failure is { } workflowFailure) throw workflowFailure;
                     workflow?.EnsureCompletionReady();
                     if (shell?.ResourceHandoff is { } handoff) throw handoff;
@@ -145,13 +152,15 @@ internal static class SoftwareDeveloperHarness
                     reasoning.Contains("<tool_call>", StringComparison.Ordinal))
                     throw new ModelToolProtocolException();
             }
-            var finalizationTurn = turn == maximumTurns - 2;
+            var finalizationTurn = workflow is null ? turn == maximumTurns - 2 :
+                workflow.Budget.Turns >= DevelopmentWorkflow.BaseTurns - 1;
             prompt = finalizationTurn
                 ? "Finalization is required now. Inspect the current workspace, run the focused validation needed for this ticket, and write .csweet/outcome.json with the actual results. Do not stop after describing the next step."
                 : "The implementation is not complete: .csweet/outcome.json is missing. Continue in this same workspace and session. " +
                   "Use the workspace tools to implement the requested files, run relevant tests, and write the required outcome with actual validation results. " +
                   "A plan or promise is not completion. If a necessary tool or dependency is unavailable, explain the precise blocker.";
         }
+        if (workflow is not null) throw new DevelopmentBudgetException(workflow.Budget, workflow.Plan);
         throw new InvalidOperationException("The coding agent stopped without a structured implementation outcome after six bounded continuation attempts. Source files remain in the workspace; deployment has not started.");
     }
 
