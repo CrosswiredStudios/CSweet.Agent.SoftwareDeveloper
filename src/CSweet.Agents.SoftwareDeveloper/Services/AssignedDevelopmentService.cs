@@ -268,8 +268,11 @@ internal sealed partial class AssignedDevelopmentService(
         }
         if (discussion.Pending is { } pending) throw new TicketResponseRequiredException(pending);
 
+        var hasRuntimeChecks = BrowserSmokeCheck.Required(item) || BrowserScenarioCheck.Required(item);
         var outcome = await ReadCheckpointedOutcomeAsync(workspacePath,
-            token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token), cancellationToken);
+            token => context.Platform.Git.UploadAsync(workspace, assignmentRevision, token), cancellationToken, hasRuntimeChecks);
+        var submission = new BrowserSubmission(workspacePath, progress.Validations, shell, browser, scenarios,
+            BrowserSmokeCheck.Required(item), BrowserScenarioCheck.Required(item));
         outcome = await progress.Validations.VerifyWithRepairAsync(outcome, shell, workspacePath, async (failed, token) =>
         {
             await context.Platform.Git.UploadAsync(workspace, assignmentRevision, token);
@@ -284,9 +287,8 @@ internal sealed partial class AssignedDevelopmentService(
                 () => discussion.Pending is not null, shell, workflow);
             if (discussion.Pending is { } waiting) throw new TicketResponseRequiredException(waiting);
             return await ReadCheckpointedOutcomeAsync(workspacePath,
-                ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token);
-        }, cancellationToken, candidateOutcome => scenarios.BindEvidence(
-            browser.BindEvidence(candidateOutcome, BrowserSmokeCheck.Required(item)), BrowserScenarioCheck.Required(item)));
+                ct => context.Platform.Git.UploadAsync(workspace, assignmentRevision, ct), token, hasRuntimeChecks);
+        }, cancellationToken, submission.VerifyAsync);
         await context.Platform.Git.UploadAsync(workspace, assignmentRevision, cancellationToken);
         if (outcome.Validations.Count == 0 ||
             outcome.Validations.Any(x => !x.Succeeded || x.ExitCode != 0))
@@ -465,8 +467,11 @@ what that prevents, and what help is needed in two or three plain-language sente
 and diagnostic output in validation evidence or a separate technical-details section. Do not claim installation
 was attempted or impossible, or attribute a network failure to permissions, unless actual results show that.
 
-Before finishing, create `.csweet/outcome.json` with this exact JSON shape:
-{"summary":"...","changedFiles":["path"],"validations":[{"command":"...","succeeded":true,"exitCode":0,"diagnosticExcerpt":null}],"remainingRisks":[]}
+Submit the candidate for review by writing `.csweet/outcome.json` once. List the project checks, including the build
+and any required clean restore. Submission runs the final browser checks on the resulting build. For custom static
+output or delivered scenario records, include browserBuildDirectory or browserObservationRecords. Use this report shape:
+{"summary":"...","changedFiles":["path"],"validations":[{"command":"..."}],"remainingRisks":[]}
+For a static browser ticket with no project commands, submit an empty validations array and the output directory.
 If retained files already satisfy the ticket, use "changedFiles":[], explain what was verified in summary,
 and record fresh relevant validation. Do not invent edits merely to report changed files.
 
@@ -483,7 +488,7 @@ Never mark missing evidence as resolved and never fabricate measurements. If no 
 unchanged candidate is resubmitted with your evidence; any needs-decision finding goes to the manager instead.
 managerDirections are the manager's reasons for retrying this stage (for example a tie-break on a disputed
 finding). Follow them within the accepted requirements; they never waive acceptance criteria or independent QA.
-Every validation entry must reflect a command you actually ran and its real exit code. Exclude
+The runtime executes the submitted checks and supplies their exit codes. Exclude
 secrets, environment dumps, authorization-bearing URLs, and unbounded command output.
 {{WorkspaceValidation.Guidance}}
 

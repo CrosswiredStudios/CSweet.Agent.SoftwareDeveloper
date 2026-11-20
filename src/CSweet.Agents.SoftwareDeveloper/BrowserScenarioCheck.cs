@@ -15,8 +15,17 @@ internal static class BrowserScenarioCheck
 {
     internal static bool Required(WorkItem item) => WorkItemVerifications.BrowserInteraction(item.Planning) is not null;
 
-    internal static string AssignmentNote(WorkItem item) => BrowserScenarios.AssignmentNote(item.Planning) + (Required(item)
-        ? " Exercise the first working interaction with actual input before expanding the suite. Check the emitted event name, fields and indexes against the observation. A focused run is diagnostic; rerun every required criterion on the final build." : "");
+    internal static string AssignmentNote(WorkItem item)
+    {
+        if (!Required(item)) return "";
+        var criteria = string.Join(", ", WorkItemVerifications.InteractionCriteria(item.Planning));
+        return $"Exercise acceptance criteria {criteria} (zero-based) through actual game input. On ?csweet-scenarios expose " +
+            "window.csweetScenarios.run() returning {contract:1, scenarios:[{id,events,checks}]} within 10 seconds. " +
+            "Events carry type, t and actual data. Each check names its criterion, expected and observed values, comparison " +
+            "(equals, atMost, atLeast or includes), and evidence indexes into the emitted events. Use run_browser_scenarios for early diagnostics. " +
+            "List every delivered Markdown observation record in browserObservationRecords. Submission builds the candidate, runs the scenarios, " +
+            "regenerates the measured sections, and runs any required smoke check. Keep interpretation outside the measured section. QA repeats the run.";
+    }
 
     internal static async Task PrepareAsync(string root, CancellationToken token)
     {
@@ -31,6 +40,9 @@ internal static class BrowserScenarioCheck
         private string? successfulSource;
         private long successfulInputs;
         private string? successfulCommand;
+        internal string? BuildDirectory { get; private set; }
+        internal string[]? ObservationRecords { get; private set; }
+        private SoftwareDevelopmentValidation? lastResult;
 
         /// <summary>The latest run passed and nothing changed since (its own record regeneration is part of the run).</summary>
         internal bool Passed => successfulSource is not null && successfulInputs == progress.Validations.InputRevision &&
@@ -50,16 +62,19 @@ internal static class BrowserScenarioCheck
             return await RunAsync(directory, [], token, diagnosticOnly: true);
         }
 
-        private async Task<string> RunAsync(string buildDirectory, string[]? observationRecords, CancellationToken token, bool diagnosticOnly)
+        private async Task<string> RunAsync(string buildDirectory, string[]? observationRecords, CancellationToken token, bool diagnosticOnly, bool submission = false)
         {
             attempted = true;
             successfulSource = null;
             var command = BrowserScenarios.Command(buildDirectory, observationRecords);
+            BuildDirectory = buildDirectory;
+            if (!diagnosticOnly) ObservationRecords = observationRecords;
             await PrepareAsync(root, token); // Restore the trusted runner if project content changed it.
             var result = await progress.RunShellCoreAsync(shell, command, token);
             var output = result.Output;
             if (result.Output.Contains("\"capture\":\"test-results/browser-scenarios/capture.json\"", StringComparison.Ordinal))
                 output += ReadObservations(root, workflow);
+            lastResult = new(command, result.Succeeded, result.ExitCode, result.Succeeded ? null : output);
             if (result.Succeeded && !diagnosticOnly)
             {
                 // The run regenerates the records' measured sections; that is its output, not a later edit. Bind its receipt
@@ -68,11 +83,17 @@ internal static class BrowserScenarioCheck
                 progress.Validations.Record(command, new ShellResult(result.Output, "", 0, TimeSpan.Zero, false), successfulSource);
                 successfulInputs = progress.Validations.InputRevision;
                 successfulCommand = command;
-                if (requiredSmoke is not null)
+                if (requiredSmoke is not null && !submission)
                     output += "\nBrowser smoke on the final scenario output: " + await requiredSmoke.CheckScenarioOutputAsync(buildDirectory, token);
             }
             await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
             return output;
+        }
+
+        internal async Task<SoftwareDevelopmentValidation> VerifySubmissionAsync(string directory, string[]? records, CancellationToken token)
+        {
+            await RunAsync(directory, records, token, diagnosticOnly: false, submission: true);
+            return lastResult!;
         }
         internal AIFunction Tool() => AIFunctionFactory.Create(
             (string buildDirectory, string[]? observationRecords, CancellationToken token) => RunAsync(buildDirectory, observationRecords, token, false), "run_browser_scenarios",

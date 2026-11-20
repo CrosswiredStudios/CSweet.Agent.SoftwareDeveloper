@@ -52,7 +52,7 @@ public sealed class BrowserSmokeCheckTests
                 Assert.Contains(failed.Validations,x=>x.Command=="check_browser_build"&&!x.Succeeded);
                 await browser.Tool().InvokeAsync(args,token);
                 return report;
-            },default,browser.RequireEvidence);
+            },default,async (candidate, token) => browser.RequireEvidence(await progress.Validations.VerifyAsync(candidate, shell, root, token)));
             Assert.Equal(1,repairs);
             Assert.DoesNotContain(verified.Validations,x=>!x.Succeeded);
             Assert.True(browser.Passed);

@@ -78,13 +78,12 @@ internal sealed class WorkspaceValidation
     internal async Task<SoftwareDevelopmentOutcome> VerifyWithRepairAsync(SoftwareDevelopmentOutcome outcome,
         BoundedWorkspaceShell shell, string root,
         Func<SoftwareDevelopmentOutcome, CancellationToken, Task<SoftwareDevelopmentOutcome>> repair, CancellationToken token,
-        Func<SoftwareDevelopmentOutcome, SoftwareDevelopmentOutcome>? requireEvidence = null)
+        Func<SoftwareDevelopmentOutcome, CancellationToken, Task<SoftwareDevelopmentOutcome>>? verifyCandidate = null)
     {
         for (var pass = 0; ; pass++)
         {
             token.ThrowIfCancellationRequested();
-            outcome = await VerifyAsync(outcome, shell, root, token);
-            if (requireEvidence is not null) outcome = requireEvidence(outcome);
+            outcome = verifyCandidate is null ? await VerifyAsync(outcome, shell, root, token) : await verifyCandidate(outcome, token);
             if (outcome.Validations.Count > 0 && outcome.Validations.All(x => x.Succeeded && x.ExitCode == 0) ||
                 pass == 2 || DevelopmentDiagnostics.MissingToolDecision(outcome, "current ticket") is not null)
                 return outcome;
@@ -114,7 +113,7 @@ internal sealed class WorkspaceValidation
     }
 
     internal async Task<SoftwareDevelopmentOutcome> VerifyAsync(SoftwareDevelopmentOutcome outcome, BoundedWorkspaceShell shell,
-        string root, CancellationToken token)
+        string root, CancellationToken token, Func<string, string?>? prepareFreshCommand = null)
     {
         var source = SourceFingerprint(root);
         var verified = new List<SoftwareDevelopmentValidation>();
@@ -123,9 +122,15 @@ internal sealed class WorkspaceValidation
             if (!IsStandalone(declared.Command))
             {
                 verified.Add(new(declared.Command, false, -1, "Validation must be a standalone executable command. Shell pipelines, chaining and status masking are not evidence."));
+                if (prepareFreshCommand is not null) break;
                 continue;
             }
-            if (!_receipts.TryGetValue(declared.Command, out var receipt) || receipt.Source != source)
+            if (prepareFreshCommand?.Invoke(declared.Command) is { } preparationError)
+            {
+                verified.Add(new(declared.Command, false, -1, preparationError));
+                break;
+            }
+            if (!_receipts.TryGetValue(declared.Command, out var receipt) || receipt.Source != source || prepareFreshCommand is not null)
             {
                 var result = await shell.RunAsync(declared.Command, token);
                 if (SourceFingerprint(root) != source)
@@ -139,6 +144,7 @@ internal sealed class WorkspaceValidation
                 receipt = _receipts[declared.Command];
             }
             verified.Add(receipt.Result);
+            if (prepareFreshCommand is not null && !receipt.Result.Succeeded) break;
         }
         if (source != SourceFingerprint(root))
             throw new OperationalDevelopmentException("Validation changed source files; validate the resulting source before publication.");

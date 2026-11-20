@@ -50,6 +50,18 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
         await RunWithBrowserAsync(path, "missing-browser");
     }
 
+    [BrowserDeliveryRecipeTests.ChromiumFact, Trait("Category", "AgentHarness")]
+    public Task Submission_rechecks_real_Chromium_after_frozen_restore_without_model_repair() =>
+        RunWithBrowserAsync(BrowserDeliveryRecipeTests.ChromiumFactAttribute.Executable!, "submit-restored");
+
+    [BrowserDeliveryRecipeTests.ChromiumFact, Trait("Category", "AgentHarness")]
+    public Task Submission_returns_the_final_page_exception_and_withholds_publication() =>
+        RunWithBrowserAsync(BrowserDeliveryRecipeTests.ChromiumFactAttribute.Executable!, "submit-broken");
+
+    [BrowserDeliveryRecipeTests.ChromiumFact, Trait("Category", "AgentHarness")]
+    public Task Static_submission_runs_declared_browser_check_without_a_lockfile_or_build() =>
+        RunWithBrowserAsync(BrowserDeliveryRecipeTests.ChromiumFactAttribute.Executable!, "submit-static");
+
     private async Task RunWithBrowserAsync(string executable, string mode)
     {
         var previous = Environment.GetEnvironmentVariable("CHROMIUM_PATH");
@@ -73,7 +85,8 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
                 : "import { create_player } from './player.mjs';\nif (create_player() !== 1) throw Error('invalid player');\n",
             [module] = python ? "# initial module" : "// initial module"
         };
-        var browserTest = mode is "browser" or "missing-browser";
+        var submission = mode is "submit-restored" or "submit-broken";
+        var browserTest = submission || mode is "browser" or "missing-browser" or "submit-static";
         if (!python)
         {
             // pnpm on Windows may run via its standalone executable. Resolve the fixture's Node
@@ -84,7 +97,7 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
             fixture["package.json"] = JsonSerializer.Serialize(new { name = "shatterpoint-fixture",
                 scripts = new { typecheck = OperatingSystem.IsWindows() ? $"call \"{executable}\" scene.mjs" : $"\"{executable}\" scene.mjs",
                     build = OperatingSystem.IsWindows() ? $"call \"{executable}\" build.cjs" : $"\"{executable}\" build.cjs" } });
-            fixture["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\n";
+            fixture["pnpm-lock.yaml"] = "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n  excludeLinksFromLockfile: false\nimporters:\n  .: {}\n";
         }
         if (browserTest)
         {
@@ -100,6 +113,14 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
                 """;
             fixture["index.html"] = TestPage("Enter");
             command = "pnpm run build";
+            if (submission)
+            {
+                fixture["index.html"] = "<canvas></canvas>";
+                fixture["build.cjs"] += "\nfs.mkdirSync('test-results', {recursive:true}); " +
+                    "fs.appendFileSync('test-results/build-inputs', fs.existsSync('node_modules/stale-fixture') ? 'dirty\\n' : 'clean\\n');";
+                fixture["verify.cjs"] = "if (!require('node:fs').existsSync('dist/index.html')) process.exit(1);";
+            }
+            if (mode == "submit-static") fixture.Clear();
         }
         var source = new MemoryStream();
         using (var zip = new ZipArchive(source, ZipArchiveMode.Create, true))
@@ -114,6 +135,8 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
             Development = new(Guid.NewGuid(), "linux", ["Use the project check"], ["Scene can construct the player"]) };
         if (browserTest) item = item with { Planning = new WorkItemPlanningSpecification([], ["One key event is observed"])
             { Verifications = [new("browser-smoke"), new("browser-interaction") { CriterionIndexes = [0] }] } };
+        if (submission || mode == "submit-static") item = item with { Planning = new WorkItemPlanningSpecification([], ["Display the startup canvas"])
+            { Verifications = [new("browser-smoke") { RequireCanvas = true }] } };
         var assignment = Empty<WorkExecutionAssignment>() with
         {
             Scope = "Task", SprintId = Guid.NewGuid(), SprintExecutionId = Guid.NewGuid(), PolicyRevisionId = Guid.NewGuid(),
@@ -125,6 +148,8 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
         var saves = new List<(string Digest, string Metadata)>();
         var publications = new List<PublishGitWorkspaceRequest>();
         var runtime = new AgentTestRuntime()
+            .RegisterCapability<TeamRosterRequest, TeamRosterResponse>(PlatformCapabilities.TeamRosterRead, (_, _) =>
+                Task.FromResult(new TeamRosterResponse(new AgentTeamContext("fixture", "Team", "Team", 1, "manager", "Producer", [], [], 1, false))))
             .RegisterCapability<WorkItemReference, WorkItem>(WorkManagementCapabilityNames.ItemRead, (_, _) => Task.FromResult(item))
             .RegisterCapability<WorkBoardReference, WorkBoardDetail>(WorkManagementCapabilityNames.BoardRead,
                 (_, _) => Task.FromResult(new WorkBoardDetail(Empty<WorkBoardSummary>(), [], [])))
@@ -177,6 +202,40 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
                 Assert.Contains("--headless", result.Error); // Node's actual startup stderr from the intentionally wrong executable.
                 Assert.Equal(0, model.Calls);
                 Assert.Empty(publications);
+                return;
+            }
+            if (submission)
+            {
+                Assert.True(model.SawEarlyEvidence, model.LastCheck);
+                if (mode == "submit-broken")
+                {
+                    var failure = result.Error ?? result.Value?.ToString() ?? "";
+                    Assert.Contains("final-page-fault", failure);
+                    Assert.Contains("exited 1", failure);
+                    Assert.Empty(publications);
+                }
+                else
+                {
+                    Assert.True(result.Succeeded, result.Error);
+                    var submitted = result.Value!.Value.Deserialize<WorkExecutionOutcomeV1>(Web)!;
+                    Assert.True(submitted.Disposition == WorkExecutionDispositions.Completed, submitted.Summary);
+                    var published = Assert.Single(publications);
+                    Assert.Equal(new[] { Restore, command, "node verify.cjs", "node .csweet/browser-smoke.cjs dist --canvas" },
+                        published.Validations!.Select(v => v.Command));
+                    Assert.All(published.Validations!, v => Assert.True(v.Succeeded && v.ExitCode == 0));
+                    Assert.Equal(1, model.Submissions);
+                    var builds = await File.ReadAllLinesAsync(Path.Combine(root, "test-results", "build-inputs"));
+                    Assert.Contains("dirty", builds);
+                    Assert.Equal("clean", builds[^1]);
+                }
+                return;
+            }
+            if (mode == "submit-static")
+            {
+                Assert.True(result.Succeeded, result.Error);
+                var staticCheck = Assert.Single(Assert.Single(publications).Validations!);
+                Assert.Equal("node .csweet/browser-smoke.cjs web/site --canvas", staticCheck.Command);
+                Assert.True(staticCheck.Succeeded && staticCheck.ExitCode == 0);
                 return;
             }
             Assert.True(result.Succeeded, result.Error);
@@ -247,6 +306,8 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
         finally { if (Directory.Exists(root)) Directory.Delete(root, true); }
     }
 
+    private const string Restore = "pnpm install --frozen-lockfile";
+
     private static string TestPage(string expected) => $$$"""
         <body>Retry<script>
         window.csweetScenarios={run(){
@@ -262,6 +323,7 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
     {
         private int calls, callsAfterToolLimit;
         public int Calls => calls;
+        public int Submissions { get; private set; }
         public bool SawEarlyEvidence { get; private set; }
         private bool repaired;
         private readonly Stopwatch timer = new();
@@ -279,7 +341,7 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
             calls++;
             var last = messages.SelectMany(m => m.Contents).OfType<FunctionResultContent>().LastOrDefault();
             var observed = last?.Result?.ToString() ?? "";
-            if (mode != "browser" && calls is 11 or 3) LastCheck = observed;
+            if (mode is not ("browser" or "submit-restored" or "submit-broken") && calls is 11 or 3) LastCheck = observed;
             var diagnostic = python ? "cannot import name 'create_player'" : "does not provide an export named 'create_player'";
             FunctionCallContent Call(string name, object args) => new("action-" + calls, name,
                 JsonSerializer.Deserialize<Dictionary<string, object?>>(JsonSerializer.Serialize(args))!);
@@ -306,6 +368,37 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
                         changedFiles = new[] { module }, validations = new[] { new { command, succeeded = true, exitCode = 0 } } }));
                 else { yield return new(ChatRole.Assistant, "Complete"); yield break; }
             }
+            else if (mode is "submit-restored" or "submit-broken")
+            {
+                if (calls == 2) action = Write("index.html", "<title>Startup</title><canvas></canvas>");
+                else if (calls == 3) action = Call("execute_workspace_command", new { command });
+                else if (calls == 4) action = Call("check_browser_build", new { buildDirectory = "dist", requireCanvas = true });
+                else if (calls == 5)
+                {
+                    LastCheck = observed;
+                    SawEarlyEvidence = observed.Contains("\"passed\":true");
+                    action = Call("execute_workspace_command", new { command = Restore });
+                }
+                else if (calls == 6) action = Write("node_modules/stale-fixture", "must disappear on clean submission");
+                else if (calls == 7) action = mode == "submit-broken"
+                    ? Write("index.html", "<canvas></canvas><script>throw Error('final-page-fault')</script>")
+                    : Call("execute_workspace_command", new { command });
+                else if (last?.CallId == "action-" + (calls - 1) && calls > 8)
+                { yield return new(ChatRole.Assistant, "Submitted"); yield break; }
+                else
+                {
+                    Submissions++;
+                    action = Write(".csweet/outcome.json", JsonSerializer.Serialize(new { summary = "Startup candidate ready", changedFiles = new[] { "index.html" },
+                        validations = new[] { "node verify.cjs", Restore }.Select(cmd => new { command = cmd }) }));
+                }
+            }
+            else if (mode == "submit-static")
+            {
+                if (calls == 2) action = Write("web/site/index.html", "<canvas></canvas>");
+                else if (calls == 3) action = Write(".csweet/outcome.json", JsonSerializer.Serialize(new { summary = "Static startup page",
+                    changedFiles = new[] { "web/site/index.html" }, browserBuildDirectory = "web/site", validations = Array.Empty<object>() }));
+                else { yield return new(ChatRole.Assistant, "Submitted"); yield break; }
+            }
             else if (mode == "browser")
             {
                 action = calls switch
@@ -313,8 +406,7 @@ public sealed class ShatterpointExecutionTests(ITestOutputHelper output)
                     2 => Call("execute_workspace_command", new { command }),
                     3 => Write("index.html", TestPage("r")),
                     4 => Call("execute_workspace_command", new { command }),
-                    5 => Call("run_browser_scenarios", new { buildDirectory = "dist", observationRecords = Array.Empty<string>() }),
-                    6 => Write(".csweet/outcome.json", JsonSerializer.Serialize(new { summary = "Verified keyboard input", changedFiles = new[] { "index.html" },
+                    5 => Write(".csweet/outcome.json", JsonSerializer.Serialize(new { summary = "Verified keyboard input", changedFiles = new[] { "index.html" },
                         validations = new[] { new { command, succeeded = true, exitCode = 0 } } })),
                     _ => null!
                 };

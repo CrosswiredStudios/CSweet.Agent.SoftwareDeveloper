@@ -38,10 +38,9 @@ internal static class BrowserSmokeCheck
         if (WorkItemVerifications.BrowserSmoke(item.Planning) is not { } browser)
             return "This ticket declares no browser verification. A browser check is not required for publication or review.";
         var canvas = browser.RequireCanvas;
-        return $"This ticket declares browser verification{(canvas ? " with a visible canvas" : "")}. After your last source edit, build the static output " +
-            $"and call check_browser_build{(canvas ? " with requireCanvas=true" : "")}. Its receipt (`{WorkItemVerificationKinds.BrowserSmokeReceiptCommand} <build directory>{(canvas ? " --canvas" : "")}`) is added to your " +
-            "validations automatically; the technical reviewer and QA check that receipt. Do not record the tool call as a validation, commit screenshots, " +
-            "or write extra verifiers for it.";
+        return $"This ticket declares browser verification{(canvas ? " with a visible canvas" : "")}. For early diagnostics use check_browser_build{(canvas ? " with requireCanvas=true" : "")}. " +
+            $"Submitting the outcome runs final verification and attaches `{WorkItemVerificationKinds.BrowserSmokeReceiptCommand} <build directory>{(canvas ? " --canvas" : "")}` for review. " +
+            "Include the project's build and any required frozen restore in validations. Use browserBuildDirectory for a custom output path. The runtime records the browser result.";
     }
 
     internal static bool Required(IEnumerable<string> criteria, string context)
@@ -83,6 +82,8 @@ internal static class BrowserSmokeCheck
         private string? successfulSource;
         private long successfulInputs;
         private string? successfulCommand;
+        internal string? BuildDirectory { get; private set; }
+        private SoftwareDevelopmentValidation? lastResult;
         internal bool Passed => successfulSource is not null && successfulInputs == progress.Validations.InputRevision &&
             successfulSource == WorkspaceValidation.SourceFingerprint(root);
         internal AIFunction Tool() => AIFunctionFactory.Create(RunAsync, "check_browser_build",
@@ -98,14 +99,25 @@ internal static class BrowserSmokeCheck
 
         private async Task<string> RunAsync(string buildDirectory, bool requireCanvas, CancellationToken token)
         {
+            var command = Command(buildDirectory, requireCanvas || canvasRequired);
+            BuildDirectory = buildDirectory;
             successfulSource = null;
             await PrepareAsync(root, token); // Restore trusted helper if project content changed it.
             var source = WorkspaceValidation.SourceFingerprint(root);
-            var result = await progress.RunShellCoreAsync(shell, Command(buildDirectory, requireCanvas || canvasRequired), token);
+            var result = await progress.RunShellCoreAsync(shell, command, token);
+            lastResult = new(command, result.Succeeded, result.ExitCode, result.Succeeded ? null : result.Output);
             if (result.Succeeded && source == WorkspaceValidation.SourceFingerprint(root))
-            { successfulSource = source; successfulInputs = progress.Validations.InputRevision; successfulCommand = Command(buildDirectory, requireCanvas || canvasRequired); }
+            { successfulSource = source; successfulInputs = progress.Validations.InputRevision; successfulCommand = command; }
             await WorkspaceCheckpoint.SaveAsync(checkpoint, token);
             return result.Output;
+        }
+
+        internal async Task<SoftwareDevelopmentValidation> VerifySubmissionAsync(string directory, bool requireCanvas, CancellationToken token)
+        {
+            await RunAsync(directory, requireCanvas, token);
+            if (lastResult!.Succeeded && !Passed)
+                return new(lastResult.Command, false, -1, "Source changed while Chromium checked the final build.");
+            return lastResult;
         }
 
         internal SoftwareDevelopmentOutcome RequireEvidence(SoftwareDevelopmentOutcome outcome) => BindEvidence(outcome, required: true);

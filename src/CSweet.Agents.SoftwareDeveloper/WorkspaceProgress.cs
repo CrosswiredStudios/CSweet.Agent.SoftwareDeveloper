@@ -83,7 +83,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
     internal async Task<string> RunShellAsync(BoundedWorkspaceShell shell, string command, CancellationToken token) =>
         (await RunShellCoreAsync(shell, command, token)).Output;
 
-    internal async Task<(string Output, bool Succeeded)> RunShellCoreAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
+    internal async Task<(string Output, bool Succeeded, int ExitCode)> RunShellCoreAsync(BoundedWorkspaceShell shell, string command, CancellationToken token)
     {
         var operation = Interlocked.Increment(ref _operations);
         var digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(command)));
@@ -113,7 +113,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
             await PublishAsync(operation, label, "denied", null, repeated, token);
             // An expected denial is model-visible data, not an opaque function exception.
             // No process ran, so do not manufacture an exit code or validation receipt.
-            return (error.Message, false);
+            return (error.Message, false, -1);
         }
         catch
         {
@@ -123,7 +123,7 @@ internal sealed class WorkspaceProgress(Guid itemId, Func<object, CancellationTo
         await PublishAsync(operation, label, result.TimedOut ? "timed out" : result.ExitCode == 0 ? "succeeded" : "failed",
             result.ExitCode, repeated, token);
         if (source is not null) Validations.Record(command, result, source);
-        return (result.FormatForModel(), !result.TimedOut && result.ExitCode == 0);
+        return (result.FormatForModel(), !result.TimedOut && result.ExitCode == 0, result.ExitCode);
     }
 
     internal static bool SafeScriptCommand(string command) => command.Length <= 180 &&

@@ -12,7 +12,7 @@ internal static class ImplementationOutcomeReader
 
     internal static async Task<SoftwareDevelopmentOutcome> ReadAsync(
         string workspacePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, bool hasRuntimeChecks = false)
     {
         var root = Path.GetFullPath(workspacePath);
         var path = Path.GetFullPath(Path.Combine(root, ".csweet", "outcome.json"));
@@ -40,7 +40,7 @@ internal static class ImplementationOutcomeReader
             throw new ImplementationOutcomeException("The completion report requires a nonempty summary of what was implemented or verified.");
         if (outcome.ChangedFiles is null || outcome.ChangedFiles.Any(string.IsNullOrWhiteSpace))
             throw new ImplementationOutcomeException("The completion report requires a changedFiles array of file paths; use [] when retained work already satisfies the task.");
-        if (outcome.Validations is null || outcome.Validations.Count == 0 ||
+        if (outcome.Validations is null || (!hasRuntimeChecks && outcome.Validations.Count == 0) ||
             outcome.Validations.Any(x => x is null || string.IsNullOrWhiteSpace(x.Command)))
             throw new ImplementationOutcomeException("The completion report requires validations with the commands actually run and their real results, including for unchanged work.");
         if (outcome.FindingResolutions is { } resolutions)

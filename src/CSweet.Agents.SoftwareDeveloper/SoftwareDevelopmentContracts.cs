@@ -28,7 +28,11 @@ public sealed record SoftwareDevelopmentOutcome(
     IReadOnlyList<string> ChangedFiles,
     IReadOnlyList<SoftwareDevelopmentValidation> Validations,
     IReadOnlyList<string>? RemainingRisks = null,
-    IReadOnlyList<FindingResolution>? FindingResolutions = null);
+    IReadOnlyList<FindingResolution>? FindingResolutions = null)
+{
+    public string? BrowserBuildDirectory { get; init; }
+    public string[]? BrowserObservationRecords { get; init; }
+}
 
 /// <summary>How the developer answered one prior review finding, identified by its prompt ID (for example R1.2).</summary>
 public sealed record FindingResolution(

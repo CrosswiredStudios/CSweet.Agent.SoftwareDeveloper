@@ -40,13 +40,8 @@ internal static partial class PlannedVerification
         if (python.Success && Directory.EnumerateFiles(root, "test*.py").Any())
             checks.Add(new(python.Value, null, 0));
 
-        var path = Path.Combine(root, "package.json");
-        if (!File.Exists(path) || new FileInfo(path).Length > 128_000 ||
-            (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0) return checks;
-        JsonDocument package;
-        try { package = JsonDocument.Parse(await File.ReadAllTextAsync(path, token)); }
-        catch (JsonException) { return checks; }
-        using (package)
+        using var package = await ReadPackageAsync(root, token);
+        if (package is not null)
         {
             var manifest = package.RootElement;
             if (manifest.ValueKind != JsonValueKind.Object || !manifest.TryGetProperty("scripts", out var scripts) ||
@@ -67,7 +62,16 @@ internal static partial class PlannedVerification
         return checks.Distinct().OrderBy(check => check.Priority).ToArray();
     }
 
-    private static string? DeclaredManager(JsonElement manifest, string root)
+    internal static async Task<JsonDocument?> ReadPackageAsync(string root, CancellationToken token)
+    {
+        var path = Path.Combine(root, "package.json");
+        if (!File.Exists(path) || new FileInfo(path).Length > 128_000 ||
+            File.GetAttributes(path).HasFlag(FileAttributes.ReparsePoint)) return null;
+        try { return JsonDocument.Parse(await File.ReadAllTextAsync(path, token)); }
+        catch (JsonException) { return null; }
+    }
+
+    internal static string? DeclaredManager(JsonElement manifest, string root)
     {
         if (manifest.TryGetProperty("packageManager", out var value) && value.ValueKind == JsonValueKind.String &&
             value.GetString() is { Length: > 0 } manager) return manager.Split('@')[0];
