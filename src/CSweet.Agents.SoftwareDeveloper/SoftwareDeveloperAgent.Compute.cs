@@ -57,6 +57,7 @@ public sealed partial class SoftwareDeveloperAgent
         }
         if (message.EventType == ComputeEvents.Available)
         {
+            await PrepareOfficeWorkspaceAsync(context, token);
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
                          .SelectMany(b => b.Items).Where(x => (x.Title == DemoTitle || IsDirectWork(x)) && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))
