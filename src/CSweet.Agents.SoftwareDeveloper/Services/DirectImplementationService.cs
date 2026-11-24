@@ -43,32 +43,6 @@ internal sealed class DirectImplementationService(
                 "Configure an approved LLM provider and model before assigning implementation work.");
         }
 
-        try
-        {
-            var assignedCompute = await new AssignedComputeService(_settings).EnsureAsync(context, cancellationToken);
-            if (!assignedCompute.Ready)
-                return AgentWorkResult.Failure(
-                    "The assigned Linux development workspace is not Ready. Planning may continue, but development cannot start.",
-                    "compute-unavailable", retryable: true);
-        }
-        catch (PlatformCapabilityException exception) when (exception.Code == PlatformCapabilityErrorCode.NotFound ||
-            exception.Code == PlatformCapabilityErrorCode.Denied &&
-            exception.Message.Contains("not registered in this test runtime", StringComparison.Ordinal))
-        {
-            // Compatibility for hosts predating durable assigned-compute state.
-        }
-        catch (WorkspaceCommandTimeoutException error)
-        {
-            return AgentWorkResult.Failure(error.Message, "workspace.command.timeout", retryable: true);
-        }
-        catch (PlatformCapabilityException exception)
-        {
-            _logger.LogWarning(exception, "Assigned compute gate rejected development capability {Capability}.", request.Capability);
-            return AgentWorkResult.Failure(
-                "The assigned Linux development workspace is unavailable. Planning may continue, but development cannot start.",
-                "compute-unavailable", retryable: true);
-        }
-
         var maxContextWindowTokens = _settings.GetInt32(
             "maxContextWindowTokens",
             SoftwareDeveloperHarness.DefaultContextWindowTokens);

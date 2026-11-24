@@ -11,7 +11,7 @@ public sealed class OfficeWorkspaceTests
     [Theory, Trait("Category", "AgentHarness")]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Hired_developer_prepares_one_authorized_project_workspace_after_restart(bool officeFirst)
+    public async Task Project_assignment_and_capacity_wakes_leave_the_runtime_workspace_in_use_after_restart(bool officeFirst)
     {
         var project = Guid.NewGuid();
         var installation = Guid.NewGuid();
@@ -72,11 +72,7 @@ public sealed class OfficeWorkspaceTests
         assigned = available = true;
         await Wake(!officeFirst, delivery);
         await Wake(!officeFirst, delivery);
-        var effect = Assert.Single(provisions);
-        Assert.Equal(project, effect.WorkstreamId);
-        Assert.Equal(template, effect.Specification.TemplateId);
-        Assert.Equal($"project:{project:N}:developer:{installation:D}:generation:0", effect.DesiredEnvironmentKey);
-        Assert.Equal(effect.DesiredEnvironmentKey, effect.IdempotencyKey);
-        Assert.Equal(environmentId, state!.Payload.GetProperty("environmentId").GetGuid());
+        Assert.Empty(provisions);
+        Assert.Null(state);
     }
 }

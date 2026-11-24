@@ -13,7 +13,7 @@ public sealed partial class SoftwareDeveloperAgent
     internal const string DemoTitle = "Create a Hello World application and return its running test link";
     internal const string DemoMarker = ComputeDemoService.DemoMarker;
     internal static readonly string[] ComputeCapabilities = ["compute.provision.v1", "compute.read.v1", "compute.list.v1",
-        "compute.execute.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1"];
+        "compute.execute.v1", "compute.start.v1", "compute.stop.v1", "compute.destroy.v1", "network.inbound.v1", "network.publish-port.v1"];
 
     public override async Task HandleAttentionReviewAsync(AgentAttentionReviewContext review, AgentRuntimeContext context, CancellationToken ct)
     {
@@ -57,7 +57,6 @@ public sealed partial class SoftwareDeveloperAgent
         }
         if (message.EventType == ComputeEvents.Available)
         {
-            await PrepareOfficeWorkspaceAsync(context, token);
             var directory = await context.Platform.PersonalTodo.ListAsync(token);
             foreach (var item in directory.Boards.Where(b => b.OwnerOrganizationUserId == directory.CurrentOrganizationUserId)
                          .SelectMany(b => b.Items).Where(x => (x.Title == DemoTitle || IsDirectWork(x)) && x.ArchivedAt is null && x.Status == "Running" && x.Wait is not null).Take(10))

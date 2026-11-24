@@ -60,18 +60,26 @@ public sealed class ComputeDemoTests
         Assert.Single(sent); Assert.Contains("unknown", sent[0]); Assert.DoesNotContain("http://", sent[0]);
     }
 
-    [Fact]
-    public async Task Unconfigured_request_waits_and_then_uses_authoritative_defaults_without_user_configuration()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Unconfigured_request_waits_and_then_uses_authoritative_defaults_without_user_configuration(bool projectKnown)
     {
         var item = Item() with { Description = JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DemoMarker, workstreamId = Guid.Empty, templateId = "" }) };
-        var ready = false; var requests = 0; var scope = Guid.NewGuid();
+        var ready = false; var requests = 0; var demand = 0; var scope = Guid.NewGuid();
         var runtime = new AgentTestRuntime()
             .RegisterCapability<JsonElement, object>("compute.read.v1", (request, _) => {
                 Assert.True(request.GetProperty("defaults").GetBoolean());
-                return Task.FromResult<object>(new { state = ready ? "Ready" : "Running", workstreamId = ready ? scope : (Guid?)null, templateId = ready ? "linux-local-assigned" : null });
+                if (request.TryGetProperty("requestWorkspace", out var intent) && intent.GetBoolean())
+                {
+                    Assert.Equal(scope, request.GetProperty("workstreamId").GetGuid());
+                    demand++;
+                }
+                return Task.FromResult<object>(new { state = ready ? "Ready" : projectKnown ? "Pending" : "Running", workstreamId = ready || projectKnown ? scope : (Guid?)null, templateId = ready ? "linux-local-assigned" : null });
             })
             .RegisterCapability<JsonElement, object>("compute.provision.v1", (request, _) => {
-                requests++;
+                if (++requests == 1) throw new PlatformCapabilityException("compute.provision.v1", PlatformCapabilityErrorCode.Unavailable,
+                    "Office capacity changed", failureCode: "compute_capacity_unavailable", retryable: true);
                 Assert.Equal(scope, request.GetProperty("workstreamId").GetGuid());
                 Assert.Equal("linux-local-assigned", request.GetProperty("specification").GetProperty("templateId").GetString());
                 return Task.FromResult<object>(new { id = Guid.NewGuid(), generation = 1, state = "provisioning", leaseExpiresAt = DateTimeOffset.UtcNow.AddHours(1) });
@@ -79,10 +87,13 @@ public sealed class ComputeDemoTests
         var agent = new SoftwareDeveloperAgent();
         await agent.HandlePersonalTodoAsync(item, runtime.CreateContext(), default);
         Assert.Equal(0, requests);
+        Assert.Equal(projectKnown ? 1 : 0, demand);
 
         ready = true;
         await agent.HandlePersonalTodoAsync(item, runtime.CreateContext(), default);
         Assert.Equal(1, requests);
+        await agent.HandlePersonalTodoAsync(item, runtime.CreateContext(), default);
+        Assert.Equal(2, requests);
     }
     private static PersonalTodoItem Item() => new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "User",
         SoftwareDeveloperAgent.DemoTitle, JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DemoMarker, workstreamId = Guid.NewGuid(), templateId = "ubuntu-clean" }),

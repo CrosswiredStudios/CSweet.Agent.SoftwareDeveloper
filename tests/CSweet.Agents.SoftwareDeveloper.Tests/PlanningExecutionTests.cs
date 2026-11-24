@@ -12,14 +12,12 @@ namespace CSweet.Agents.SoftwareDeveloper.Tests;
 public sealed partial class ComputeDeploymentRecoveryTests
 {
     [Fact]
-    public async Task Ready_compute_claims_before_planning_or_repository_creation()
+    public async Task Runtime_work_is_claimed_without_a_separate_compute_grant()
     {
         var item = new PersonalTodoItem(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Matt",
             "Build a browser game",
             JsonSerializer.Serialize(new { kind = SoftwareDeveloperAgent.DirectWorkMarker, request = "Build a polished Tetris clone.", environmentId = (Guid?)null }),
             "Ready", "Medium", 0, 3, null, null, null, [], null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
-        var workstreamId = Guid.NewGuid();
-        var environmentId = Guid.NewGuid();
         var states = new Dictionary<string, AgentOperatingStateResponse>(StringComparer.Ordinal);
         var calls = new List<string>();
         var runtime = new AgentTestRuntime()
@@ -36,11 +34,6 @@ public sealed partial class ComputeDeploymentRecoveryTests
                     states[request.StateKey] = response;
                     return Task.FromResult(response);
                 })
-            .RegisterCapability<JsonElement, Compute.ComputeDefaults>(Compute.ComputeCapabilities.Read, (_, _) =>
-                Task.FromResult(new Compute.ComputeDefaults("Ready", workstreamId, "linux-default", null)))
-            .RegisterCapability<Compute.ProvisionComputeRequest, Compute.ComputeEnvironment>(Compute.ComputeCapabilities.Provision, (_, _) =>
-                Task.FromResult(new Compute.ComputeEnvironment(environmentId, 1, 1, "ready", "ready", "retained",
-                    DateTimeOffset.UtcNow, DateTimeOffset.MaxValue, null, "software-developer-workspace")))
             .RegisterCapability<CreatePersonalWorkPlanRequest, PersonalWorkPlan>(PersonalWorkPlanCapabilities.Create, (request, _) =>
             {
                 calls.Add("plan");

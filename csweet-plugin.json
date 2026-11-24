@@ -11,7 +11,7 @@
   },
   "id": "com.csweet.software-developer",
   "name": "Daniel Kim",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "publisher": {
     "id": "com.csweet",
     "name": "C-Sweet"
@@ -1111,6 +1111,12 @@
       "name": "compute.execute.v1",
       "scope": "organization",
       "purpose": "Create and report explicitly requested ephemeral Linux test instances under separate scoped compute and networking grants.",
+      "modelVisible": false
+    },
+    {
+      "name": "compute.start.v1",
+      "scope": "organization",
+      "purpose": "Start an authorized retained workspace when a task needs it.",
       "modelVisible": false
     },
     {

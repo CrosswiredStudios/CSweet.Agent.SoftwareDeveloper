@@ -26,6 +26,14 @@ internal sealed class AssignedComputeService
     internal async Task<AssignedComputeReadiness> EnsureAsync(
         AgentRuntimeContext context, CancellationToken cancellationToken, bool notifyManager = true, Guid? projectId = null)
     {
+        try { return await GetReadinessAsync(context, cancellationToken, notifyManager, projectId); }
+        catch (PlatformCapabilityException error) when (error.FailureCode == "compute_capacity_unavailable")
+        { return new(false, null, error.FailureCode); }
+    }
+
+    private async Task<AssignedComputeReadiness> GetReadinessAsync(
+        AgentRuntimeContext context, CancellationToken cancellationToken, bool notifyManager, Guid? projectId)
+    {
         if (projectId.HasValue) return await EnsureProjectComputeAsync(projectId.Value, context, cancellationToken);
         var retained = await context.Platform.ReadOperatingStateAsync<AssignedComputeState>(
             AssignedComputeStateKey, cancellationToken);
@@ -38,6 +46,7 @@ internal sealed class AssignedComputeService
         if (state.EnvironmentId is { } environmentId)
         {
             environment = await context.Platform.Compute.ReadAsync(environmentId, cancellationToken);
+            environment = await context.Platform.Compute.StartIfStoppedAsync(environment, cancellationToken);
             if (string.Equals(environment.State, "ready", StringComparison.OrdinalIgnoreCase) &&
                 environment.LeaseExpiresAt > DateTimeOffset.UtcNow)
                 return new(true, environment, null);
@@ -59,6 +68,8 @@ internal sealed class AssignedComputeService
         }
 
         var defaults = await context.Platform.Compute.GetDefaultsAsync(cancellationToken);
+        if (defaults.State == "Pending" && defaults.WorkstreamId is { } assignedProject)
+            defaults = await context.Platform.Compute.RequestProjectWorkspaceAsync(assignedProject, cancellationToken);
         if (defaults.State == "Failed")
         {
             var failure = defaults.ErrorCode ?? "compute-setup-failed";
@@ -89,12 +100,13 @@ internal sealed class AssignedComputeService
         if (state.EnvironmentId is { } id)
         {
             var current = await context.Platform.Compute.ReadAsync(id, ct);
+            current = await context.Platform.Compute.StartIfStoppedAsync(current, ct);
             if (current.State == "ready" && current.LeaseExpiresAt > DateTimeOffset.UtcNow) return new(true, current, null);
             if (current.State is not ("destroyed" or "failed") && current.LeaseExpiresAt > DateTimeOffset.UtcNow) return new(false, current, current.FailureCode);
             if (state.ReplacementGeneration >= _settings.GetInt32("maximumComputeReplacements", 3)) return new(false, current, "replacement-limit-reached");
             state = state with { EnvironmentId = null, ReplacementGeneration = state.ReplacementGeneration + 1 };
         }
-        var defaults = await context.Platform.Compute.GetProjectDefaultsAsync(project, ct);
+        var defaults = await context.Platform.Compute.RequestProjectWorkspaceAsync(project, ct);
         if (defaults is not { State: "Ready", TemplateId: { } template }) return new(false, null, defaults.ErrorCode);
         var desired = $"project:{project:N}:developer:{context.InstallationId}:generation:{state.ReplacementGeneration}";
         var environment = await context.Platform.Compute.ProvisionAsync(new(project, desired, desired,
@@ -114,7 +126,7 @@ internal sealed class AssignedComputeService
         if (Guid.TryParse(context.Identity?.ManagerEmployeeId, out var managerId))
         {
             await context.Platform.Communication.SendDirectMessageAsync(managerId,
-                $"My assigned Linux development workspace could not be provisioned ({failure}). Development tickets will remain Ready and unclaimed; I can continue requirements discussion and planning while the compute issue is resolved.",
+                $"The separate workspace for my deployment task is unavailable ({failure}). I can continue implementation and validation in my agent runtime.",
                 $"developer-compute-blocked:{incident}", cancellationToken);
         }
         await SaveAssignedComputeAsync(state with { NotifiedIncident = incident }, retained, context, cancellationToken);

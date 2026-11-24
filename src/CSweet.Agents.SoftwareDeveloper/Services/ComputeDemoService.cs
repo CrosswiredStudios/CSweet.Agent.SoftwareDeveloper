@@ -21,10 +21,14 @@ internal sealed class ComputeDemoService(AgentSettings settings)
             var prefix = $"{DemoMarker}:{item.Id:N}";
             if (terms.WorkstreamId == Guid.Empty || string.IsNullOrWhiteSpace(terms.TemplateId))
             {
-                var defaults = await context.Platform.Compute.GetDefaultsAsync(token);
+                var defaults = item.WorkContext?.WorkstreamId is { } project
+                    ? await context.Platform.Compute.RequestProjectWorkspaceAsync(project, token)
+                    : await context.Platform.Compute.GetDefaultsAsync(token);
+                if (item.WorkContext?.WorkstreamId == null && defaults.State == "Pending" && defaults.WorkstreamId is { } assignedProject)
+                    defaults = await context.Platform.Compute.RequestProjectWorkspaceAsync(assignedProject, token);
                 if (defaults.State == "Failed") return await BlockAsync("C-Sweet could not finish preparing Linux compute. " + defaults.ErrorCode);
                 if (defaults is not { State: "Ready", WorkstreamId: { } workstreamId, TemplateId: { } templateId })
-                    return Wait("C-Sweet is preparing the Linux test environment; approve the Windows administrator prompt if one appears.");
+                    return Wait("Waiting for an available Linux test workspace.");
                 terms = new(DemoMarker, workstreamId, templateId);
             }
             var environment = await context.Platform.Compute.ProvisionAsync(new(
@@ -62,6 +66,10 @@ internal sealed class ComputeDemoService(AgentSettings settings)
                     await context.Platform.Communication.SendMessageAsync(chatId, reason, prefix + ":blocked", token);
                 return PersonalTodoResult.Blocked(reason);
             }
+        }
+        catch (PlatformCapabilityException error) when (error.FailureCode == "compute_capacity_unavailable")
+        {
+            return PersonalTodoResult.WaitingUntil(DateTimeOffset.UtcNow.AddMinutes(5), "Waiting for Office capacity for the Linux test workspace.");
         }
         catch (PlatformCapabilityException error)
         {
