@@ -26,7 +26,7 @@ public sealed class DevelopmentEfficiencyTests
 
 #pragma warning disable MAAI001
     [Fact]
-    public async Task Large_tool_history_shrinks_without_removing_accepted_scope_or_recent_evidence()
+    public async Task Large_tool_history_shrinks_without_removing_assistant_reasoning_or_recent_evidence()
     {
         const string accepted = "Accepted direction: Phaser 2D; Chromium only. Criterion A: exact pin. Criterion B: lockfile. Review finding R1.1 remains required.";
         var history = new CompactionMessageIndex([], null);
@@ -35,7 +35,7 @@ public sealed class DevelopmentEfficiencyTests
         for (var index = 0; index < 14; index++)
         {
             history.AddGroup(CompactionGroupKind.ToolCall, [
-                new(ChatRole.Assistant, [new FunctionCallContent("call-" + index, "file_access_read", new Dictionary<string, object?> { ["fileName"] = "source-" + index })]),
+                new(ChatRole.Assistant, [new TextReasoningContent($"Inspect file {index}."), new FunctionCallContent("call-" + index, "file_access_read", new Dictionary<string, object?> { ["fileName"] = "source-" + index })]),
                 new(ChatRole.Tool, [new FunctionResultContent("call-" + index, "tool-" + index + ":" + new string('x', 80_000))])], 0);
         }
         var before = history.IncludedTokenCount;
@@ -45,7 +45,21 @@ public sealed class DevelopmentEfficiencyTests
         var retained = history.GetIncludedMessages();
         Assert.Contains(retained, x => x.Role == ChatRole.User && x.Text == accepted);
         Assert.Contains(retained, x => x.Role == ChatRole.System && x.Text == "Never bypass reviews.");
-        Assert.Contains(retained.SelectMany(x => x.Contents).OfType<FunctionResultContent>(), x => x.CallId == "call-13");
+        var assistants = retained.Where(message => message.Role == ChatRole.Assistant).ToArray();
+        Assert.Equal(14, assistants.Length);
+        for (var index = 0; index < assistants.Length; index++)
+        {
+            Assert.Equal($"Inspect file {index}.", Assert.Single(assistants[index].Contents.OfType<TextReasoningContent>()).Text);
+            Assert.Equal($"call-{index}", Assert.Single(assistants[index].Contents.OfType<FunctionCallContent>()).CallId);
+        }
+        var results = retained.SelectMany(message => message.Contents).OfType<FunctionResultContent>().ToArray();
+        Assert.Equal(assistants.SelectMany(message => message.Contents).OfType<FunctionCallContent>().Select(call => call.CallId),
+            results.Select(result => result.CallId));
+        Assert.Contains("Older tool detail abbreviated", Assert.IsType<string>(results[0].Result));
+        Assert.Equal("tool-13:" + new string('x', 80_000), results[^1].Result);
+        var after = history.IncludedTokenCount;
+        Assert.False(await DevelopmentEfficiency.ToolHistory(128_000).CompactAsync(history));
+        Assert.Equal(after, history.IncludedTokenCount);
     }
 
     [Fact]
@@ -76,7 +90,7 @@ public sealed class DevelopmentEfficiencyTests
             var options = SoftwareDeveloperHarness.CreateOptions("Daniel", root, shell, null, 256_000, 128_000);
             Assert.Equal(256_000, options.MaxContextWindowTokens);
             Assert.Equal(128_000, options.MaxOutputTokens);
-            Assert.IsType<ToolResultCompactionStrategy>(options.CompactionStrategy);
+            Assert.NotNull(options.CompactionStrategy);
             Assert.Contains("smallest set of executable checks", options.ChatOptions!.Instructions);
             Assert.Contains("never removes an acceptance criterion", options.ChatOptions.Instructions);
         }

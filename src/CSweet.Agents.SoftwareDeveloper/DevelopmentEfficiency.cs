@@ -1,4 +1,7 @@
+using System.Text.Json;
 using Microsoft.Agents.AI.Compaction;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Logging;
 
 namespace CSweet.Agents.SoftwareDeveloper;
 
@@ -27,19 +30,57 @@ internal static class DevelopmentEfficiency
         """;
 
 #pragma warning disable MAAI001
-    internal static ToolResultCompactionStrategy ToolHistory(int inputBudget) => new(
+    internal static CompactionStrategy ToolHistory(int inputBudget) => new ToolOutputCompactionStrategy(inputBudget);
+
+    private sealed class ToolOutputCompactionStrategy(int inputBudget) : CompactionStrategy(
         CompactionTriggers.TokensExceed(Math.Clamp(inputBudget, 1, 32_000)),
-        minimumPreservedGroups: 2,
-        target: CompactionTriggers.TokensBelow(Math.Clamp(inputBudget, 1, 20_000)))
+        CompactionTriggers.TokensBelow(Math.Clamp(inputBudget, 1, 20_000)))
     {
-        // Only old tool-call groups are shortened. User assignments, criteria, constraints,
-        // manager directions and review findings are never truncated by this strategy.
-        ToolCallFormatter = group =>
+        protected override ValueTask<bool> CompactCoreAsync(CompactionMessageIndex index, ILogger? logger,
+            CancellationToken cancellationToken)
         {
-            var summary = ToolResultCompactionStrategy.DefaultToolCallFormatter(group);
-            return summary.Length <= 1024 ? summary : summary[..768] +
-                "\n[Older tool detail abbreviated; re-read source or inspect again if needed.]\n" + summary[^192..];
+            var recentGroups = index.Groups.Where(group => !group.IsExcluded && group.Kind != CompactionGroupKind.System)
+                .TakeLast(2).ToHashSet();
+            var changed = false;
+            for (var position = 0; position < index.Groups.Count && !Target(index); position++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var group = index.Groups[position];
+                if (group.IsExcluded || group.Kind != CompactionGroupKind.ToolCall || recentGroups.Contains(group))
+                    continue;
+
+                // Keep the original assistant turn and matching tool call IDs. Thinking-mode providers
+                // validate the assistant's reasoning when the conversation continues.
+                var messages = group.Messages.Select(ShortenToolOutput).ToArray();
+                if (group.Messages.SequenceEqual(messages)) continue;
+
+                index.Groups.RemoveAt(position);
+                index.InsertGroup(position, group.Kind, messages, group.TurnIndex);
+                changed = true;
+            }
+
+            return ValueTask.FromResult(changed);
         }
-    };
+
+        private static ChatMessage ShortenToolOutput(ChatMessage message)
+        {
+            if (message.Role != ChatRole.Tool) return message;
+
+            var contents = message.Contents.Select(content =>
+            {
+                if (content is not FunctionResultContent { Result: not null } result) return content;
+                var text = result.Result as string ?? JsonSerializer.Serialize(result.Result);
+                if (text.Length <= 1024) return content;
+
+                return new FunctionResultContent(result.CallId, text[..744] +
+                    "\n[Older tool detail abbreviated; re-read source or inspect again if needed.]\n" + text[^192..]);
+            }).ToList();
+
+            if (message.Contents.SequenceEqual(contents)) return message;
+            var shortened = message.Clone();
+            shortened.Contents = contents;
+            return shortened;
+        }
+    }
 #pragma warning restore MAAI001
 }
